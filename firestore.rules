@@ -24,8 +24,44 @@ service cloud.firestore {
       return hasRole('MasterAdmin');
     }
     
-    function isAdmin() {
-      return hasRole('MasterAdmin') || hasRole('SuperAdmin') || hasRole('Admin');
+    function isMD() {
+      return hasRole('MasterAdmin') || hasRole('MD');
+    }
+    
+    function isGM() {
+      return hasRole('MasterAdmin') || hasRole('MD') || hasRole('GM');
+    }
+    
+    function isHrManager() {
+      return hasRole('MasterAdmin') || hasRole('MD') || hasRole('GM') || hasRole('HrManager');
+    }
+    
+    function isCampBoss() {
+      return hasRole('MasterAdmin') || hasRole('MD') || hasRole('GM') || hasRole('CampBoss');
+    }
+    
+    function isManager() {
+      return hasRole('MasterAdmin') || hasRole('MD') || hasRole('GM') || hasRole('CampBoss') || hasRole('Manager');
+    }
+    
+    function isAccountant() {
+      return hasRole('CampBoss') || hasRole('Manager') || hasRole('Accountant');
+    }
+    
+    function isInspector() {
+      return hasRole('CampBoss') || hasRole('Manager') || hasRole('Inspector');
+    }
+    
+    function isSecurity() {
+      return hasRole('CampBoss') || hasRole('Manager') || hasRole('Security');
+    }
+    
+    function canViewData() {
+      return isApproved(); // All approved users can view basic data
+    }
+    
+    function canManageData() {
+      return hasRole('CampBoss') || hasRole('Manager');
     }
     
     // Root document - only authenticated users can read
@@ -53,7 +89,7 @@ service cloud.firestore {
         request.resource.data.email == request.auth.token.email &&
         // New users can only set themselves as Staff (unless first user)
         (request.resource.data.roles == ['Staff'] || 
-         (request.resource.data.isFirstUser == true && request.resource.data.roles == ['MasterAdmin'])) &&
+         (request.resource.data.isFirstUser == true && request.resource.data.roles == ['CampBoss'])) &&
         // New users must be pending (unless first user)
         (request.resource.data.status == 'pending' || 
          (request.resource.data.isFirstUser == true && request.resource.data.status == 'approved'));
@@ -72,8 +108,8 @@ service cloud.firestore {
          request.resource.data.status == resource.data.status &&
          request.resource.data.isFirstUser == resource.data.isFirstUser)
         ||
-        // MasterAdmin updating any user
-        (isMasterAdmin() &&
+        // Executives and Managers updating any user
+        ((isManager() || isHrManager()) &&
          // Cannot change uid, email, createdAt, isFirstUser
          request.resource.data.uid == resource.data.uid &&
          request.resource.data.email == resource.data.email &&
@@ -81,8 +117,13 @@ service cloud.firestore {
          request.resource.data.isFirstUser == resource.data.isFirstUser &&
          // Must have at least one role
          request.resource.data.roles.size() > 0 &&
-         // Cannot remove MasterAdmin from the first user
-         !(resource.data.isFirstUser == true && !('MasterAdmin' in request.resource.data.roles)))
+         // Cannot remove MasterAdmin/MD/GM/CampBoss from the first user
+         !(resource.data.isFirstUser == true && !('MasterAdmin' in request.resource.data.roles || 'MD' in request.resource.data.roles || 'GM' in request.resource.data.roles || 'CampBoss' in request.resource.data.roles)) &&
+         // Role assignment hierarchy
+         (isMasterAdmin() || !('MasterAdmin' in request.resource.data.roles)) && // Only MasterAdmin can assign MasterAdmin
+         (isMD() || !('MD' in request.resource.data.roles)) && // Only MD+ can assign MD
+         (isGM() || !('GM' in request.resource.data.roles)) && // Only GM+ can assign GM
+         (isCampBoss() || !('CampBoss' in request.resource.data.roles))) // Only CampBoss+ can assign CampBoss
       );
       
       // Delete: Only MasterAdmin can delete users (except first user)
@@ -98,9 +139,9 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Activity logs - write-only for logging, read by admins
+    // Activity logs - write-only for logging, read by executives and managers
     match /cmg-camp-manager/root/activityLogs/{docId} {
-      allow read: if isAdmin();
+      allow read: if isManager() || isHrManager();
       // Users can only create logs, not update or delete
       allow create: if isAuthenticated() &&
         request.resource.data.uid == request.auth.uid &&
@@ -108,16 +149,66 @@ service cloud.firestore {
       allow update, delete: if false; // Logs are immutable
     }
 
+    // Camps - read by all, manage by CampBoss/Manager
+    match /cmg-camp-manager/root/camps/{docId} {
+      allow read: if canViewData();
+      allow write: if canManageData();
+    }
+    
+    // Zones and Rooms - read by all, manage by CampBoss/Manager
+    match /cmg-camp-manager/root/{collection}/{docId} {
+      allow read: if canViewData() && collection in ['zones', 'rooms'];
+      allow write: if canManageData() && collection in ['zones', 'rooms'];
+    }
+    
+    // Workers - read by all, register by Staff+, edit/delete by Manager+ or HrManager
+    match /cmg-camp-manager/root/workers/{docId} {
+      allow read: if canViewData();
+      allow create: if isApproved(); // Staff can register
+      allow update, delete: if canManageData() || isHrManager();
+    }
+    
+    // Visitors - read by all, manage by Security+
+    match /cmg-camp-manager/root/visitors/{docId} {
+      allow read: if canViewData();
+      allow write: if isSecurity();
+    }
+    
+    // Dashboard data - read by all
+    match /cmg-camp-manager/root/dashboard/{docId} {
+      allow read: if canViewData();
+      allow write: if canManageData();
+    }
+    
+    // Invoices - read by Accountant+, manage by Accountant+
+    match /cmg-camp-manager/root/invoices/{docId} {
+      allow read: if isAccountant();
+      allow write: if isAccountant();
+    }
+    
     // All other subcollections - require approved status
     match /cmg-camp-manager/root/{sub}/{docId} {
-      allow read: if isApproved();
-      allow write: if isApproved();
+      allow read: if canViewData();
+      allow write: if canManageData();
     }
 
     // Nested subcollections - require approved status
     match /cmg-camp-manager/root/{sub}/{docId}/{rest=**} {
-      allow read: if isApproved();
-      allow write: if isApproved();
+      allow read: if canViewData();
+      allow write: if canManageData();
+    }
+    
+    // Inspection logs (at root level) - read by Inspector+, write by Inspector+
+    match /inspection_logs/{docId} {
+      allow read: if isInspector() || isAccountant();
+      allow create: if isInspector();
+      allow update, delete: if false; // Logs are immutable
+    }
+    
+    // Billing penalties (at root level) - read by Accountant+, manage by Accountant+
+    match /billing_penalties/{docId} {
+      allow read: if isAccountant();
+      allow write: if isAccountant();
     }
   }
 }

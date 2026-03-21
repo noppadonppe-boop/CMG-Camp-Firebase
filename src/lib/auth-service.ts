@@ -79,7 +79,7 @@ async function createUserProfile(
       firstName: additionalData.firstName,
       lastName: additionalData.lastName,
       position: additionalData.position,
-      roles: isFirstUser ? ["MasterAdmin"] : ["Staff"],
+      roles: isFirstUser ? ["CampBoss"] : ["Staff"],
       status: isFirstUser ? "approved" : "pending",
       assignedProjects: [],
       createdAt: Timestamp.now(),

@@ -55,7 +55,15 @@ export default function ProtectedRoute({
   if (requireRoles && requireRoles.length > 0) {
     const hasRequiredRole = requireRoles.some((role) => userProfile.roles.includes(role));
     if (!hasRequiredRole) {
-      return <Navigate to="/" replace />;
+      return (
+        <Navigate 
+          to="/" 
+          state={{ 
+            error: "คุณไม่มีสิทธิ์เข้าถึงหน้านี้ กรุณาติดต่อผู้จัดการแคมป์" 
+          }} 
+          replace 
+        />
+      );
     }
   }
 

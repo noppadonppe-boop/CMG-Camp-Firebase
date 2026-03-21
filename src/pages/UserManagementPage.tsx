@@ -12,6 +12,12 @@ export default function UserManagementPage() {
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<UserRole[]>([]);
   const [saving, setSaving] = useState(false);
+  
+  const isMasterAdmin = currentUser?.roles.includes("MasterAdmin") ?? false;
+  const isMD = (currentUser?.roles.includes("MD") ?? false) || isMasterAdmin;
+  const isGM = (currentUser?.roles.includes("GM") ?? false) || isMD;
+  const isCampBoss = currentUser?.roles.includes("CampBoss") ?? false;
+  const isExecutive = isMasterAdmin || isMD || isGM;
 
   const filteredUsers = users.filter((u) => {
     if (filter === "all") return true;
@@ -37,12 +43,33 @@ export default function UserManagementPage() {
   }
 
   async function handleSaveRoles(uid: string) {
+    if (!currentUser) return;
+    
+    // Role hierarchy validation
+    if (selectedRoles.includes("MasterAdmin") && !isMasterAdmin) {
+      alert("เฉพาะ MasterAdmin เท่านั้นที่สามารถมอบสิทธิ์ MasterAdmin ให้ผู้อื่นได้");
+      return;
+    }
+    if (selectedRoles.includes("MD") && !isMD) {
+      alert("เฉพาะ MD ขึ้นไปเท่านั้นที่สามารถมอบสิทธิ์ MD ให้ผู้อื่นได้");
+      return;
+    }
+    if (selectedRoles.includes("GM") && !isGM) {
+      alert("เฉพาะ GM ขึ้นไปเท่านั้นที่สามารถมอบสิทธิ์ GM ให้ผู้อื่นได้");
+      return;
+    }
+    if (selectedRoles.includes("CampBoss") && !isCampBoss && !isExecutive) {
+      alert("เฉพาะ CampBoss หรือผู้บริหารระดับสูงเท่านั้นที่สามารถมอบสิทธิ์ CampBoss ให้ผู้อื่นได้");
+      return;
+    }
+    
     setSaving(true);
     try {
       await updateUserProfile(uid, { roles: selectedRoles });
       setEditingUser(null);
     } catch (err) {
       console.error("Update roles failed:", err);
+      alert("เกิดข้อผิดพลาดในการบันทึกสิทธิ์");
     } finally {
       setSaving(false);
     }
@@ -153,19 +180,30 @@ export default function UserManagementPage() {
                     {editingUser === user.uid ? (
                       <div className="space-y-2">
                         <div className="flex flex-wrap gap-2">
-                          {USER_ROLES.map((role) => (
-                            <button
-                              key={role}
-                              onClick={() => toggleRole(role)}
-                              className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
-                                selectedRoles.includes(role)
-                                  ? "border-blue-500 bg-blue-50 text-blue-700"
-                                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                              }`}
-                            >
-                              {role}
-                            </button>
-                          ))}
+                          {USER_ROLES.map((role: string) => {
+                            // Role hierarchy restrictions
+                            const disabled = 
+                              (role === "MasterAdmin" && !isMasterAdmin) ||
+                              (role === "MD" && !isMD) ||
+                              (role === "GM" && !isGM) ||
+                              (role === "CampBoss" && !isCampBoss && !isExecutive);
+                            return (
+                              <button
+                                key={role}
+                                onClick={() => toggleRole(role)}
+                                disabled={disabled}
+                                className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                                  selectedRoles.includes(role)
+                                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                                    : disabled
+                                    ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed"
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                                }`}
+                              >
+                                {role}
+                              </button>
+                            );
+                          })}
                         </div>
                         <div className="flex gap-2">
                           <button

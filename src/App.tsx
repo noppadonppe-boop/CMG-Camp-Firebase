@@ -60,7 +60,7 @@ export default function App() {
               <Route
                 path="/camps"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "CampBoss", "Manager"]}>
                     <CampsPage />
                   </ProtectedRoute>
                 }
@@ -76,7 +76,7 @@ export default function App() {
               <Route
                 path="/rooms"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "CampBoss", "Manager"]}>
                     <RoomsPage />
                   </ProtectedRoute>
                 }
@@ -84,7 +84,7 @@ export default function App() {
               <Route
                 path="/visitors"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "HrManager", "CampBoss", "Manager", "Security"]}>
                     <VisitorsPage />
                   </ProtectedRoute>
                 }
@@ -100,7 +100,7 @@ export default function App() {
               <Route
                 path="/hygiene/inspect"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "CampBoss", "Manager", "Inspector"]}>
                     <HygieneInspectPage />
                   </ProtectedRoute>
                 }
@@ -116,7 +116,7 @@ export default function App() {
               <Route
                 path="/billing"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "CampBoss", "Manager", "Accountant"]}>
                     <BillingPage />
                   </ProtectedRoute>
                 }
@@ -124,7 +124,7 @@ export default function App() {
               <Route
                 path="/billing/meter-readings"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "CampBoss", "Manager", "Accountant"]}>
                     <BillingMeterReadingsPage />
                   </ProtectedRoute>
                 }
@@ -132,7 +132,7 @@ export default function App() {
               <Route
                 path="/billing/invoices"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "CampBoss", "Manager", "Accountant"]}>
                     <BillingInvoicesPage />
                   </ProtectedRoute>
                 }
@@ -148,7 +148,7 @@ export default function App() {
               <Route
                 path="/admin/users"
                 element={
-                  <ProtectedRoute requireRoles={["MasterAdmin"]}>
+                  <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "HrManager", "CampBoss", "Manager"]}>
                     <UserManagementPage />
                   </ProtectedRoute>
                 }

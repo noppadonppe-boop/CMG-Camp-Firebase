@@ -29,7 +29,7 @@ export default function AppSidebar() {
   const { userProfile } = useAuth();
   const { pendingCount } = useUsers();
 
-  const isMasterAdmin = userProfile?.roles.includes("MasterAdmin");
+  const canManageUsers = userProfile?.roles.some((role: string) => ["MasterAdmin", "MD", "GM", "HrManager", "CampBoss", "Manager"].includes(role));
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-gray-200 bg-white">
@@ -96,8 +96,8 @@ export default function AppSidebar() {
         ))}
       </nav>
 
-      {/* User Management (MasterAdmin only) */}
-      {isMasterAdmin && (
+      {/* User Management (CampBoss & Manager only) */}
+      {canManageUsers && (
         <div className="border-t border-gray-100 p-3">
           <NavLink
             to="/admin/users"
