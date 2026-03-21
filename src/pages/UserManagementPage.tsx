@@ -180,7 +180,7 @@ export default function UserManagementPage() {
                     {editingUser === user.uid ? (
                       <div className="space-y-2">
                         <div className="flex flex-wrap gap-2">
-                          {USER_ROLES.map((role: string) => {
+                          {USER_ROLES.map((role) => {
                             // Role hierarchy restrictions
                             const disabled = 
                               (role === "MasterAdmin" && !isMasterAdmin) ||
