@@ -5,6 +5,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -32,5 +33,6 @@ function initDb() {
   }
 }
 
+export const auth    = getAuth(app);
 export const db      = initDb();
 export const storage = getStorage(app);

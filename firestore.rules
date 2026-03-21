@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Root collection read access for all authenticated users
+    match /cmg-camp-manager/root {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Users collection - authenticated users can read/write their own and other profiles
+    match /cmg-camp-manager/root/users/{uid} {
+      allow read, write: if request.auth != null;
+    }
+
+    // App metadata - authenticated users can read/write
+    match /cmg-camp-manager/root/appMeta/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Activity logs - authenticated users can read/write
+    match /cmg-camp-manager/root/activityLogs/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // All other subcollections - authenticated users can read/write
+    match /cmg-camp-manager/root/{sub}/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Nested subcollections - authenticated users can read/write
+    match /cmg-camp-manager/root/{sub}/{docId}/{rest=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
