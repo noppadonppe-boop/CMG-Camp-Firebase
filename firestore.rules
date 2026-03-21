@@ -2,35 +2,122 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Root collection read access for all authenticated users
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/cmg-camp-manager/root/users/$(uid)).data;
+    }
+    
+    function isApproved() {
+      return isAuthenticated() && getUserData(request.auth.uid).status == 'approved';
+    }
+    
+    function hasRole(role) {
+      return isApproved() && role in getUserData(request.auth.uid).roles;
+    }
+    
+    function isMasterAdmin() {
+      return hasRole('MasterAdmin');
+    }
+    
+    function isAdmin() {
+      return hasRole('MasterAdmin') || hasRole('SuperAdmin') || hasRole('Admin');
+    }
+    
+    // Root document - only authenticated users can read
     match /cmg-camp-manager/root {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read: if isAuthenticated();
+      allow write: if false; // Never allow direct writes to root
     }
 
-    // Users collection - authenticated users can read/write their own and other profiles
+    // Users collection - role-based access control
     match /cmg-camp-manager/root/users/{uid} {
-      allow read, write: if request.auth != null;
+      // Anyone authenticated can read approved users (for user lists, etc.)
+      // But only approved users can read pending/rejected users
+      allow read: if isAuthenticated() && (
+        resource.data.status == 'approved' || 
+        isApproved() ||
+        request.auth.uid == uid
+      );
+      
+      // Create: Only during registration (new user creates their own profile)
+      allow create: if isAuthenticated() && 
+        request.auth.uid == uid &&
+        // Validate required fields
+        request.resource.data.keys().hasAll(['uid', 'email', 'firstName', 'lastName', 'position', 'roles', 'status', 'assignedProjects', 'createdAt', 'isFirstUser']) &&
+        request.resource.data.uid == uid &&
+        request.resource.data.email == request.auth.token.email &&
+        // New users can only set themselves as Staff (unless first user)
+        (request.resource.data.roles == ['Staff'] || 
+         (request.resource.data.isFirstUser == true && request.resource.data.roles == ['MasterAdmin'])) &&
+        // New users must be pending (unless first user)
+        (request.resource.data.status == 'pending' || 
+         (request.resource.data.isFirstUser == true && request.resource.data.status == 'approved'));
+      
+      // Update: Users can update their own profile (limited fields)
+      // OR MasterAdmin can update any user
+      allow update: if isAuthenticated() && (
+        // Users updating their own profile
+        (request.auth.uid == uid && 
+         // Can only update these fields
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['firstName', 'lastName', 'position', 'photoURL']) &&
+         // Cannot change critical fields
+         request.resource.data.uid == resource.data.uid &&
+         request.resource.data.email == resource.data.email &&
+         request.resource.data.roles == resource.data.roles &&
+         request.resource.data.status == resource.data.status &&
+         request.resource.data.isFirstUser == resource.data.isFirstUser)
+        ||
+        // MasterAdmin updating any user
+        (isMasterAdmin() &&
+         // Cannot change uid, email, createdAt, isFirstUser
+         request.resource.data.uid == resource.data.uid &&
+         request.resource.data.email == resource.data.email &&
+         request.resource.data.createdAt == resource.data.createdAt &&
+         request.resource.data.isFirstUser == resource.data.isFirstUser &&
+         // Must have at least one role
+         request.resource.data.roles.size() > 0 &&
+         // Cannot remove MasterAdmin from the first user
+         !(resource.data.isFirstUser == true && !('MasterAdmin' in request.resource.data.roles)))
+      );
+      
+      // Delete: Only MasterAdmin can delete users (except first user)
+      allow delete: if isMasterAdmin() && resource.data.isFirstUser != true;
     }
 
-    // App metadata - authenticated users can read/write
+    // App metadata - read by all authenticated, write only by system during registration
     match /cmg-camp-manager/root/appMeta/{docId} {
-      allow read, write: if request.auth != null;
+      allow read: if isAuthenticated();
+      // Only allow creation/update during user registration (checked via transaction)
+      // In production, this should be handled by Cloud Functions
+      allow create, update: if isAuthenticated();
+      allow delete: if false;
     }
 
-    // Activity logs - authenticated users can read/write
+    // Activity logs - write-only for logging, read by admins
     match /cmg-camp-manager/root/activityLogs/{docId} {
-      allow read, write: if request.auth != null;
+      allow read: if isAdmin();
+      // Users can only create logs, not update or delete
+      allow create: if isAuthenticated() &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.keys().hasAll(['uid', 'email', 'action', 'timestamp']);
+      allow update, delete: if false; // Logs are immutable
     }
 
-    // All other subcollections - authenticated users can read/write
+    // All other subcollections - require approved status
     match /cmg-camp-manager/root/{sub}/{docId} {
-      allow read, write: if request.auth != null;
+      allow read: if isApproved();
+      allow write: if isApproved();
     }
 
-    // Nested subcollections - authenticated users can read/write
+    // Nested subcollections - require approved status
     match /cmg-camp-manager/root/{sub}/{docId}/{rest=**} {
-      allow read, write: if request.auth != null;
+      allow read: if isApproved();
+      allow write: if isApproved();
     }
   }
 }
