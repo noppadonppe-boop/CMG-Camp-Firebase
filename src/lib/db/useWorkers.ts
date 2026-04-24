@@ -5,6 +5,9 @@ import {
   orderBy,
   onSnapshot,
   addDoc,
+  doc,
+  updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -51,4 +54,12 @@ export function useWorkers() {
 
 export async function addWorker(data: Omit<Worker, "id">) {
   await addDoc(collection(db, ROOT, ROOT_DOC, "workers"), data);
+}
+
+export async function updateWorker(id: string, data: Partial<Omit<Worker, "id">>) {
+  await updateDoc(doc(db, ROOT, ROOT_DOC, "workers", id), data);
+}
+
+export async function deleteWorker(id: string) {
+  await deleteDoc(doc(db, ROOT, ROOT_DOC, "workers", id));
 }

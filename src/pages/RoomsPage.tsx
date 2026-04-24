@@ -9,6 +9,7 @@ import {
   type Zone,
   type RoomStatus,
 } from "@/lib/db/useRooms";
+import { useWorkers, type Worker } from "@/lib/db/useWorkers";
 
 const STATUS_CONFIG: Record<RoomStatus, { label: string; cardBg: string; cardBorder: string; cardHover: string; badgeBg: string; badgeText: string; textColor: string; dotColor: string; icon: React.ElementType }> = {
   empty:       { label: "ว่าง",      cardBg: "bg-emerald-50", cardBorder: "border-emerald-200", cardHover: "hover:bg-emerald-100 hover:border-emerald-400 hover:shadow-emerald-100", badgeBg: "bg-emerald-100", badgeText: "text-emerald-700", textColor: "text-emerald-700", dotColor: "bg-emerald-500", icon: BedDouble },
@@ -142,16 +143,17 @@ function AddRoomModal({ zones, defaultZoneId, onClose }: { zones: Zone[]; defaul
   );
 }
 
-function RoomModal({ room, onClose }: { room: Room; onClose: () => void }) {
+function RoomModal({ room, workers, onClose }: { room: Room; workers: Worker[]; onClose: () => void }) {
   const cfg = STATUS_CONFIG[room.status];
+  const residents = workers.filter((w) => w.roomId === room.id);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-xs rounded-2xl bg-white p-6 shadow-xl">
+      <div className="relative w-full max-w-[400px] rounded-2xl bg-white p-6 shadow-xl">
         <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-xl ${cfg.cardBg} border ${cfg.cardBorder}`}><BedDouble className={`h-6 w-6 ${cfg.textColor}`} /></div>
         <h3 className="text-lg font-bold text-gray-800">{room.number}</h3>
         <p className="mt-0.5 text-sm text-gray-500">{room.status === "maintenance" ? "ห้องนี้อยู่ระหว่างซ่อมบำรุง" : `คนอยู่ ${room.occupied} จาก ${room.capacity} เตียง`}</p>
-        <div className="mt-4 flex items-center gap-2">
+        <div className="mt-3 flex items-center gap-2">
           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${cfg.badgeBg} ${cfg.badgeText}`}><span className={`h-1.5 w-1.5 rounded-full ${cfg.dotColor}`} />{cfg.label}</span>
         </div>
         {room.status !== "maintenance" && room.capacity > 0 && (
@@ -160,6 +162,22 @@ function RoomModal({ room, onClose }: { room: Room; onClose: () => void }) {
             <div className="flex flex-wrap gap-2">
               {Array.from({ length: room.capacity }).map((_, i) => (
                 <div key={i} className={`flex h-8 w-8 items-center justify-center rounded-md text-xs font-semibold ${i < room.occupied ? `${cfg.cardBg} ${cfg.cardBorder} border ${cfg.textColor}` : "border border-gray-200 bg-gray-50 text-gray-400"}`}>{i < room.occupied ? "●" : "○"}</div>
+              ))}
+            </div>
+          </div>
+        )}
+        {residents.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-medium text-gray-500">รายชื่อผู้พัก</p>
+            <div className="space-y-1.5">
+              {residents.map((w, i) => (
+                <div key={w.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${cfg.cardBg} ${cfg.cardBorder}`}>
+                  <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${cfg.badgeBg} ${cfg.badgeText}`}>{i + 1}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate text-sm font-semibold text-gray-800">{w.firstName} {w.lastName}</p>
+                    <p className="truncate text-xs text-gray-400">{w.jobRole} · {w.subcontractor}</p>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -173,6 +191,7 @@ function RoomModal({ room, onClose }: { room: Room; onClose: () => void }) {
 export default function RoomsPage() {
   const { zones, loading: zonesLoading } = useZones();
   const { rooms, loading: roomsLoading } = useRooms();
+  const { workers } = useWorkers();
   const [selectedZoneId, setSelectedZoneId] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
@@ -226,7 +245,7 @@ export default function RoomsPage() {
           {filteredRooms.map((room) => <RoomCard key={room.id} room={room} onClick={() => setActiveRoom(room)} />)}
         </div>
       )}
-      {activeRoom && <RoomModal room={activeRoom} onClose={() => setActiveRoom(null)} />}
+      {activeRoom && <RoomModal room={activeRoom} workers={workers} onClose={() => setActiveRoom(null)} />}
       {showAddRoom && <AddRoomModal zones={zones} defaultZoneId={selectedZoneId} onClose={() => setShowAddRoom(false)} />}
       {showAddZone && <AddZoneModal nextOrder={zones.length} onClose={() => setShowAddZone(false)} />}
     </div>
