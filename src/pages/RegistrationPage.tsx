@@ -50,8 +50,6 @@ function RegisterModal({ onClose, zones, rooms }: { onClose: () => void; zones: 
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
-  const filteredRooms = form.zoneId ? rooms.filter((r) => r.zoneId === form.zoneId && r.status !== "maintenance" && r.occupied < r.capacity) : [];
-
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm((p) => ({ ...p, [k]: v }));
     if (errors[k]) setErrors((e) => ({ ...e, [k]: undefined }));
@@ -73,8 +71,6 @@ function RegisterModal({ onClose, zones, rooms }: { onClose: () => void; zones: 
     if (!form.nationality.trim()) errs.nationality = "Required";
     if (!form.subcontractor.trim()) errs.subcontractor = "Required";
     if (!form.jobRole.trim()) errs.jobRole = "Required";
-    if (!form.zoneId) errs.zoneId = "Required";
-    if (!form.roomId) errs.roomId = "Required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -196,31 +192,6 @@ function RegisterModal({ onClose, zones, rooms }: { onClose: () => void; zones: 
               </div>
             </div>
 
-            {/* Room Allocation */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-              <SectionTitle n={4} title="จัดสรรห้องพัก" sub="Room Allocation" />
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label="โซน" required error={errors.zoneId}>
-                  <div className="relative">
-                    <select value={form.zoneId} onChange={(e) => { set("zoneId", e.target.value); set("roomId", ""); }} className={selectCls(errors.zoneId)}>
-                      <option value="">-- เลือกโซน --</option>
-                      {zones.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  </div>
-                </Field>
-                <Field label="ห้องพัก" required error={errors.roomId}>
-                  <div className="relative">
-                    <select value={form.roomId} onChange={(e) => set("roomId", e.target.value)} disabled={!form.zoneId} className={selectCls(errors.roomId) + " disabled:bg-gray-50 disabled:text-gray-400"}>
-                      <option value="">-- เลือกห้องพัก --</option>
-                      {filteredRooms.map((r) => <option key={r.id} value={r.id}>{r.number} ({r.occupied}/{r.capacity})</option>)}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  </div>
-                </Field>
-              </div>
-            </div>
-
             {status === "error" && (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 <span className="font-semibold">บันทึกไม่สำเร็จ:</span> {errorMsg || "เกิดข้อผิดพลาด กรุณาลองใหม่"}
@@ -261,10 +232,6 @@ function WorkerDetailModal({
   const [deleting, setDeleting] = useState(false);
   const [saveErr, setSaveErr] = useState("");
 
-  const filteredRooms = form.zoneId
-    ? rooms.filter((r) => r.zoneId === form.zoneId && r.status !== "maintenance" && (r.occupied < r.capacity || r.id === worker.roomId))
-    : [];
-
   function setF<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((p) => ({ ...p, [k]: v }));
     setErrors((e) => ({ ...e, [k]: undefined }));
@@ -278,8 +245,6 @@ function WorkerDetailModal({
     if (!form.nationality.trim()) errs.nationality = "Required";
     if (!form.subcontractor.trim()) errs.subcontractor = "Required";
     if (!form.jobRole.trim()) errs.jobRole = "Required";
-    if (!form.zoneId) errs.zoneId = "Required";
-    if (!form.roomId) errs.roomId = "Required";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -405,24 +370,6 @@ function WorkerDetailModal({
                 <Field label="ตำแหน่งงาน" required error={errors.jobRole}>
                   <input value={form.jobRole} onChange={(e) => setF("jobRole", e.target.value)} className={inputCls(errors.jobRole)} />
                 </Field>
-                <Field label="โซน" required error={errors.zoneId}>
-                  <div className="relative">
-                    <select value={form.zoneId} onChange={(e) => { setF("zoneId", e.target.value); setF("roomId", ""); }} className={selectCls(errors.zoneId)}>
-                      <option value="">-- เลือกโซน --</option>
-                      {zones.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  </div>
-                </Field>
-                <Field label="ห้องพัก" required error={errors.roomId}>
-                  <div className="relative">
-                    <select value={form.roomId} onChange={(e) => setF("roomId", e.target.value)} disabled={!form.zoneId} className={selectCls(errors.roomId) + " disabled:bg-gray-50 disabled:text-gray-400"}>
-                      <option value="">-- เลือกห้อง --</option>
-                      {filteredRooms.map((r) => <option key={r.id} value={r.id}>{r.number} ({r.occupied}/{r.capacity})</option>)}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  </div>
-                </Field>
               </div>
               {saveErr && <p className="text-xs text-red-500">{saveErr}</p>}
             </div>
@@ -504,85 +451,29 @@ export default function RegistrationPage() {
   }, [workers, search, roomMap]);
 
   return (
-    <div className="flex gap-0 -m-6" style={{ minHeight: 'calc(100vh - 56px)' }}>
-      {/* ── Left Sidebar: Registrant List ── */}
-      <aside className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-white">
-        <div className="border-b border-gray-100 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-sm font-bold text-gray-800">รายชื่อผู้ลงทะเบียน</h2>
-              <p className="text-xs text-gray-400">{workers.length} คน</p>
+    <div className="flex flex-col -m-6 bg-white" style={{ minHeight: 'calc(100vh - 56px)' }}>
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">
+              ลงทะเบียนแรงงาน <span className="text-base font-normal text-gray-400">Worker Registration</span>
+            </h1>
+            <p className="mt-0.5 text-xs text-gray-500">รายชื่อแรงงานทั้งหมด {filtered.length} คน</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative w-64">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ค้นหาชื่อ, ห้อง, ผู้รับเหมา..."
+                className="w-full rounded-xl border border-gray-200 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:ring-2 focus:ring-blue-400 hover:border-gray-300 bg-gray-50/50"
+              />
             </div>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition"
-            >
-              <Plus className="h-3.5 w-3.5" />เพิ่ม
+            <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition active:scale-95">
+              <Plus className="h-4 w-4" />เพิ่มแรงงาน
             </button>
           </div>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ค้นหาชื่อ, ห้อง..."
-              className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-3 text-xs outline-none transition focus:ring-2 focus:ring-blue-400 hover:border-gray-300"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-              <Users className="h-8 w-8 text-gray-200 mb-2" />
-              <p className="text-xs text-gray-400">{search ? "ไม่พบผลการค้นหา" : "ยังไม่มีผู้ลงทะเบียน"}</p>
-            </div>
-          ) : (
-            filtered.map((w) => {
-              const room = roomMap[w.roomId];
-              const zone = zoneMap[w.zoneId];
-              const isActive = selectedId === w.id;
-              return (
-                <button
-                  key={w.id}
-                  onClick={() => setSelectedId(isActive ? null : w.id)}
-                  className={`flex w-full items-center gap-3 px-4 py-3 text-left transition border-b border-gray-50 ${isActive ? "bg-blue-50" : "hover:bg-gray-50"}`}
-                >
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${isActive ? "bg-blue-600 text-white" : "bg-blue-100 text-blue-700"}`}>
-                    {w.firstName.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`truncate text-sm font-semibold ${isActive ? "text-blue-800" : "text-gray-800"}`}>
-                      {w.firstName} {w.lastName}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {room && (
-                        <span className="inline-flex items-center gap-0.5 text-xs text-gray-500">
-                          <BedDouble className="h-3 w-3" />{room.number}
-                        </span>
-                      )}
-                      {zone && <span className="text-xs text-gray-400">· {zone.label}</span>}
-                    </div>
-                  </div>
-                  <ChevronRight className={`h-3.5 w-3.5 shrink-0 ${isActive ? "text-blue-500" : "text-gray-300"}`} />
-                </button>
-              );
-            })
-          )}
-        </div>
-      </aside>
-
-      {/* ── Main Body: Worker Table ── */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="border-b border-gray-200 bg-white px-6 py-4">
-          <h1 className="text-xl font-bold text-gray-800">
-            ลงทะเบียนแรงงาน <span className="text-base font-normal text-gray-400">Worker Registration</span>
-          </h1>
-          <p className="mt-0.5 text-xs text-gray-500">รายชื่อแรงงานพร้อมข้อมูลและห้องพัก</p>
         </div>
 
         <div className="flex-1 overflow-auto p-6">

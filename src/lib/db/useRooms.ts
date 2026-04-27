@@ -7,6 +7,7 @@ import {
   addDoc,
   doc,
   updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -23,6 +24,7 @@ export interface Room {
 
 export interface Zone {
   id: string;
+  campId?: string;
   label: string;
   order: number;
 }
@@ -80,10 +82,22 @@ export async function addZone(data: Omit<Zone, "id">) {
   await addDoc(collection(db, ROOT, ROOT_DOC, "zones"), data);
 }
 
+export async function updateZone(id: string, data: Partial<Omit<Zone, "id">>) {
+  await updateDoc(doc(db, ROOT, ROOT_DOC, "zones", id), data);
+}
+
+export async function deleteZone(id: string) {
+  await deleteDoc(doc(db, ROOT, ROOT_DOC, "zones", id));
+}
+
 export async function addRoom(data: Omit<Room, "id">) {
   await addDoc(collection(db, ROOT, ROOT_DOC, "rooms"), data);
 }
 
 export async function updateRoom(id: string, data: Partial<Omit<Room, "id">>) {
   await updateDoc(doc(db, ROOT, ROOT_DOC, "rooms", id), data);
+}
+
+export async function deleteRoom(id: string) {
+  await deleteDoc(doc(db, ROOT, ROOT_DOC, "rooms", id));
 }
