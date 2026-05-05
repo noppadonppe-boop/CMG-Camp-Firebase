@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { BedDouble, User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, MapPin } from "lucide-react";
+﻿import { useState } from "react";
+import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar } from "lucide-react";
 import {
   useRooms,
   useZones,
@@ -13,6 +13,14 @@ import {
 import { useCamps } from "@/lib/db/useCamps";
 import { useWorkers, updateWorker, type Worker } from "@/lib/db/useWorkers";
 import { useAuth } from "@/context/AuthContext";
+import {
+  useOccupancyHistory,
+  useElectricityHistory,
+  useMaintenanceFeeHistory,
+  addOccupancyRecord,
+  addElectricityRecord,
+  addMaintenanceFeeRecord,
+} from "@/lib/db/useRoomHistory";
 
 
 const STATUS_CONFIG: Record<RoomStatus, { label: string; cardBg: string; cardBorder: string; cardHover: string; badgeBg: string; badgeText: string; textColor: string; dotColor: string; icon: React.ElementType }> = {
@@ -44,6 +52,7 @@ function RoomCard({ room, workers, onClick, canEdit, onEdit, onDelete }: { room:
   const cfg = STATUS_CONFIG[compStatus];
   const Icon = cfg.icon;
   
+  const displayResidents = residents.slice(0, 3);
   return (
     <button onClick={onClick} className={`group relative flex w-full flex-col items-start rounded-2xl border p-2.5 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1 shadow-sm hover:shadow-md hover:-translate-y-0.5 cursor-pointer ${cfg.cardBg} ${cfg.cardBorder} ${cfg.cardHover}`}>
       
@@ -77,19 +86,20 @@ function RoomCard({ room, workers, onClick, canEdit, onEdit, onDelete }: { room:
          </div>
       </div>
 
-      {/* Residents names */}
-      <div className="mt-1.5 flex w-full flex-wrap gap-1">
+      {/* Residents names – compact */}
+      <div className="mt-1 flex w-full flex-wrap gap-0.5">
         {room.status === "maintenance" ? (
-          <span className="text-[10px] text-gray-500/70 italic">-</span>
-        ) : residents.length > 0 ? (
-          residents.map((r, i) => (
-            <span key={i} className={`truncate max-w-full rounded border border-black/5 bg-white/70 px-1.5 py-0.5 text-[9px] font-semibold leading-none shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${cfg.textColor}`}>
+          <span className="text-[8px] text-gray-500/70 italic">-</span>
+        ) : displayResidents.length > 0 ? (
+          displayResidents.map((r, i) => (
+            <span key={i} className={`truncate max-w-full rounded px-1 py-px text-[8px] font-semibold leading-none bg-white/60 ${cfg.textColor}`}>
               {r.firstName} {r.lastName ? `${r.lastName.charAt(0)}.` : ""}
             </span>
           ))
         ) : (
-          <span className={`text-[9px] font-medium opacity-60 italic ${cfg.textColor}`}>-- ไม่มีผู้พัก --</span>
+          <span className={`text-[8px] font-medium opacity-50 italic ${cfg.textColor}`}>ว่าง</span>
         )}
+        {residents.length > 3 && <span className={`text-[8px] opacity-50 ${cfg.textColor}`}>+{residents.length - 3}</span>}
       </div>
     </button>
   );
@@ -142,126 +152,183 @@ function AddRoomModal({ zones, defaultZoneId, onClose }: { zones: Zone[]; defaul
   );
 }
 
+
+function fmt(ts: import("firebase/firestore").Timestamp | null) {
+  if (!ts) return "-";
+  return ts.toDate().toLocaleDateString("th-TH", { day: "2-digit", month: "short", year: "2-digit" });
+}
+
 function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }: { room: Room; workers: Worker[]; onClose: () => void; canEdit?: boolean; onEditRoom?: () => void; onDeleteRoom?: () => void }) {
   const residents = workers.filter((w) => w.roomId === room.id);
   const compStatus = getComputedStatus(room, residents.length);
   const cfg = STATUS_CONFIG[compStatus];
-  
   const unassignedWorkers = workers.filter((w) => !w.roomId);
   const [selectedWorkerId, setSelectedWorkerId] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-
-  async function handleAddResident() {
-    if (!selectedWorkerId) return;
-    try {
-      await updateWorker(selectedWorkerId, { roomId: room.id, zoneId: room.zoneId });
-      setSelectedWorkerId("");
-      setIsAdding(false);
-    } catch (err) {
-      alert("เพิ่มผู้พักไม่สำเร็จ");
-    }
-  }
+  const [showElecForm, setShowElecForm] = useState(false);
+  const [meterVal, setMeterVal] = useState("");
+  const [elecNote, setElecNote] = useState("");
+  const [elecSaving, setElecSaving] = useState(false);
+  const [maintCharged, setMaintCharged] = useState(false);
+  const [maintNote, setMaintNote] = useState("");
+  const [maintSaving, setMaintSaving] = useState(false);
+  const [showMaintForm, setShowMaintForm] = useState(false);
+  const { records: occRecords } = useOccupancyHistory(room.id);
+  const { records: elecRecords } = useElectricityHistory(room.id);
+  const { records: maintRecords } = useMaintenanceFeeHistory(room.id);
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const fmtMonth = (m: string) => { const [y, mo] = m.split("-"); return new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" }); };
 
   async function handleRemoveResident(w: Worker) {
-    if (window.confirm(`ต้องการนำคุณ ${w.firstName} ออกจากห้อง ${room.number} หรือไม่?`)) {
-      try {
-        await updateWorker(w.id, { roomId: "", zoneId: "" });
-      } catch (err) {
-        alert("นำออกไม่สำเร็จ");
-      }
-    }
+    if (!window.confirm(`นำ ${w.firstName} ออกจากห้อง ${room.number}?`)) return;
+    try { await updateWorker(w.id, { roomId: "", zoneId: "" }); await addOccupancyRecord(room.id, { workerName: `${w.firstName} ${w.lastName}`, action: "checkout" }); }
+    catch { alert("นำออกไม่สำเร็จ"); }
+  }
+  async function handleAddResident2() {
+    if (!selectedWorkerId) return;
+    const w = workers.find(x => x.id === selectedWorkerId);
+    try { await updateWorker(selectedWorkerId, { roomId: room.id, zoneId: room.zoneId }); if (w) await addOccupancyRecord(room.id, { workerName: `${w.firstName} ${w.lastName}`, action: "checkin" }); setSelectedWorkerId(""); setIsAdding(false); }
+    catch { alert("เพิ่มผู้พักไม่สำเร็จ"); }
+  }
+  async function handleSaveElectricity() {
+    const units = parseFloat(meterVal);
+    if (!units || units <= 0) { alert("กรุณาใส่ค่ามิเตอร์ที่ถูกต้อง"); return; }
+    setElecSaving(true);
+    try { await addElectricityRecord(room.id, { meterReading: units, totalCost: units * 8, month: currentMonth, note: elecNote }); setMeterVal(""); setElecNote(""); setShowElecForm(false); }
+    catch { alert("บันทึกไม่สำเร็จ"); }
+    setElecSaving(false);
+  }
+  async function handleSaveMaintenance() {
+    setMaintSaving(true);
+    try { const total = maintCharged ? 150 * residents.length : 0; await addMaintenanceFeeRecord(room.id, { month: currentMonth, charged: maintCharged, costPerPerson: 150, occupants: residents.length, totalCost: total, note: maintNote }); setMaintNote(""); setShowMaintForm(false); }
+    catch { alert("บันทึกไม่สำเร็จ"); }
+    setMaintSaving(false);
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-[420px] rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-        
-        {/* Header Section */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${cfg.cardBg} border ${cfg.cardBorder}`}>
-              <Users className={`h-6 w-6 ${cfg.textColor}`} />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-800">{room.number}</h3>
-              <p className="text-sm font-medium text-gray-500">{room.status === "maintenance" ? "ซ่อมบำรุง" : `${residents.length} / ${room.capacity} คน`}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {canEdit && (
-              <>
-                <button onClick={() => { onClose(); onEditRoom?.(); }} className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition cursor-pointer" title="แก้ไขข้อมูลห้องพัก"><Pencil className="h-4 w-4" /></button>
-                <button onClick={() => { onClose(); onDeleteRoom?.(); }} className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition cursor-pointer" title="ลบห้องพัก"><Trash2 className="h-4 w-4" /></button>
-              </>
-            )}
-            <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 ml-2 cursor-pointer"><X className="h-4 w-4" /></button>
-          </div>
-        </div>
-
-        <div className="mb-5 flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${cfg.badgeBg} ${cfg.badgeText}`}><span className={`h-1.5 w-1.5 rounded-full ${cfg.dotColor}`} />{cfg.label}</span>
-        </div>
-
-        {/* Residents Section */}
-        {room.status !== "maintenance" && room.capacity > 0 && (
-          <div className="mt-2 space-y-4">
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">รายชื่อผู้พัก ({residents.length})</p>
-                {canEdit && residents.length < room.capacity && !isAdding && (
-                  <button onClick={() => setIsAdding(true)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer">
-                    <Plus className="h-3.5 w-3.5" /> ดึงรายชื่อจากผู้ลงทะเบียน
-                  </button>
-                )}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="shrink-0 bg-gradient-to-r from-slate-800 to-slate-700 px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/15 border border-white/20">
+                <Users className="h-6 w-6 text-white" />
               </div>
-              
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-bold text-white">{room.number}</h3>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${cfg.badgeBg} ${cfg.badgeText}`}><span className={`h-1.5 w-1.5 rounded-full ${cfg.dotColor}`} />{cfg.label}</span>
+                </div>
+                <p className="text-sm text-white/60 mt-0.5">{room.status === "maintenance" ? "ปิดซ่อมบำรุง" : `${residents.length} / ${room.capacity} คน`}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {canEdit && (<><button onClick={() => { onClose(); onEditRoom?.(); }} className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white/80 hover:bg-white/20 transition cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => { onClose(); onDeleteRoom?.(); }} className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 transition cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button></>)}
+              <button onClick={onClose} className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white/70 hover:bg-white/20 transition cursor-pointer"><X className="h-4 w-4" /></button>
+            </div>
+          </div>
+          {room.status !== "maintenance" && room.capacity > 0 && (
+            <div className="mt-4">
+              <div className="mb-1 flex justify-between text-xs text-white/50"><span>อัตราการใช้ห้อง</span><span>{Math.round((residents.length / room.capacity) * 100)}%</span></div>
+              <div className="h-1.5 w-full rounded-full bg-white/20"><div className="h-1.5 rounded-full bg-white transition-all duration-500" style={{ width: `${Math.min(100,(residents.length/room.capacity)*100)}%` }} /></div>
+            </div>
+          )}
+        </div>
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
+
+          {/* Section: ผู้พัก */}
+          {room.status !== "maintenance" && room.capacity > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2"><div className="h-5 w-1 rounded-full bg-blue-500" /><h4 className="text-sm font-bold text-gray-800">ผู้พักปัจจุบัน</h4><span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{residents.length}</span></div>
+                {canEdit && residents.length < room.capacity && !isAdding && (<button onClick={() => setIsAdding(true)} className="flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-100 transition cursor-pointer"><Plus className="h-3.5 w-3.5" /> เพิ่มผู้พัก</button>)}
+              </div>
               {isAdding && (
-                <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50 p-3">
-                  <p className="mb-2 text-xs font-semibold text-blue-800">เลือกผู้เข้าพักมาเติม:</p>
+                <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50/80 p-3">
+                  <p className="mb-2 text-xs font-semibold text-blue-700">เลือกผู้เข้าพัก:</p>
                   <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <select value={selectedWorkerId} onChange={(e) => setSelectedWorkerId(e.target.value)} className="w-full appearance-none rounded-lg border border-blue-200 bg-white px-3 py-2.5 pr-8 text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="">-- เลือกแรงงานที่ไม่มีห้อง --</option>
-                        {unassignedWorkers.map(w => <option key={w.id} value={w.id}>{w.firstName} {w.lastName} ({w.jobRole})</option>)}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    </div>
-                    <button onClick={handleAddResident} disabled={!selectedWorkerId} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50 cursor-pointer shadow-sm">เพิ่ม</button>
-                    <button onClick={() => setIsAdding(false)} className="rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-500 transition hover:bg-gray-50 cursor-pointer"><X className="h-4 w-4" /></button>
+                    <div className="relative flex-1"><select value={selectedWorkerId} onChange={(e) => setSelectedWorkerId(e.target.value)} className="w-full appearance-none rounded-lg border border-blue-200 bg-white px-3 py-2 pr-8 text-xs outline-none focus:ring-2 focus:ring-blue-500"><option value="">-- เลือกแรงงาน --</option>{unassignedWorkers.map(w => <option key={w.id} value={w.id}>{w.firstName} {w.lastName} ({w.jobRole})</option>)}</select><ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" /></div>
+                    <button onClick={handleAddResident2} disabled={!selectedWorkerId} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 cursor-pointer">เพิ่ม</button>
+                    <button onClick={() => setIsAdding(false)} className="rounded-lg border border-gray-200 px-2 text-gray-400 hover:bg-gray-50 cursor-pointer"><X className="h-3.5 w-3.5" /></button>
                   </div>
-                  {unassignedWorkers.length === 0 && <p className="mt-1.5 text-[10px] text-red-500">* ไม่มีแรงงานใหม่ว่างเลย (ต้องลงทะเบียนก่อน)</p>}
                 </div>
               )}
-
               {residents.length > 0 ? (
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {residents.map((w, i) => (
-                    <div key={w.id} className="group flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 transition hover:border-gray-200 hover:bg-white shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-bold text-gray-500 shadow-sm border border-gray-100">{i + 1}</div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-gray-800">{w.firstName} {w.lastName}</p>
-                          <p className="truncate text-[10.5px] font-medium text-gray-400 mt-0.5">{w.jobRole} · {w.subcontractor}</p>
-                        </div>
-                      </div>
-                      {canEdit && (
-                        <button onClick={() => handleRemoveResident(w)} title="นำออกจากห้อง" className="opacity-0 group-hover:opacity-100 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500 transition cursor-pointer">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
+                    <div key={w.id} className="group flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 hover:bg-white hover:border-gray-200 hover:shadow-sm transition">
+                      <div className="flex items-center gap-2.5 min-w-0"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] font-bold text-white shadow-sm">{i+1}</div><div className="min-w-0"><p className="truncate text-sm font-bold text-gray-800">{w.firstName} {w.lastName}</p><p className="truncate text-[10px] text-gray-400">{w.jobRole} · {w.subcontractor}</p></div></div>
+                      {canEdit && (<button onClick={() => handleRemoveResident(w)} className="opacity-0 group-hover:opacity-100 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-500 transition cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>)}
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-gray-400">
-                  <Users className="mx-auto mb-2 h-6 w-6 opacity-30" />
-                  <p className="text-xs">ยังไม่มีผู้พัก</p>
-                </div>
-              )}
+              ) : (<div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-6 text-gray-400"><Users className="h-6 w-6 opacity-30 mb-1" /><p className="text-xs">ยังไม่มีผู้พัก</p></div>)}
+            </section>
+          )}
+
+          {/* Section: ค่าไฟฟ้า */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2"><div className="h-5 w-1 rounded-full bg-amber-400" /><h4 className="text-sm font-bold text-gray-800">ค่าไฟฟ้า</h4><span className="text-[10px] text-gray-400 font-medium">หน่วยละ 8 บาท</span></div>
+              {canEdit && !showElecForm && (<button onClick={() => setShowElecForm(true)} className="flex items-center gap-1 rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-100 transition cursor-pointer"><Plus className="h-3.5 w-3.5" /> บันทึกมิเตอร์</button>)}
             </div>
-          </div>
-        )}
+            {showElecForm && (
+              <div className="mb-3 rounded-xl border border-amber-100 bg-amber-50/70 p-4 space-y-3">
+                <p className="text-xs font-bold text-amber-800">บันทึกค่ามิเตอร์ · {fmtMonth(currentMonth)}</p>
+                <div className="flex gap-3">
+                  <div className="flex-1"><label className="mb-1 block text-[10px] font-semibold text-amber-700">จำนวนหน่วย (kWh)</label><input type="number" min={0} value={meterVal} onChange={e => setMeterVal(e.target.value)} placeholder="เช่น 125.5" className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400" /></div>
+                  {meterVal && parseFloat(meterVal) > 0 && (<div className="flex flex-col justify-end rounded-xl bg-white border border-amber-200 px-4 py-2 text-right shrink-0"><span className="text-[10px] text-gray-400">{parseFloat(meterVal)} × 8</span><span className="text-base font-bold text-amber-600">{(parseFloat(meterVal)*8).toLocaleString()} ฿</span></div>)}
+                </div>
+                <input value={elecNote} onChange={e => setElecNote(e.target.value)} placeholder="หมายเหตุ (ถ้ามี)" className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-400" />
+                <div className="flex gap-2"><button onClick={handleSaveElectricity} disabled={elecSaving} className="flex-1 rounded-lg bg-amber-500 py-2 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-60 transition cursor-pointer">{elecSaving ? "กำลังบันทึก..." : "บันทึก"}</button><button onClick={() => { setShowElecForm(false); setMeterVal(""); setElecNote(""); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-400 hover:bg-gray-50 cursor-pointer"><X className="h-3.5 w-3.5" /></button></div>
+              </div>
+            )}
+            {elecRecords.length > 0 ? (
+              <div className="relative pl-5"><div className="absolute left-2 top-0 bottom-0 w-px bg-amber-200" />
+                {elecRecords.map((r) => (<div key={r.id} className="relative mb-2.5 flex items-start gap-3"><div className="absolute -left-3 mt-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 border-2 border-white shadow-sm"><Zap className="h-2 w-2 text-white" /></div><div className="ml-1.5 flex flex-1 items-center justify-between rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"><div><p className="text-xs font-bold text-gray-700">{fmtMonth(r.month)}</p><p className="text-[10px] text-gray-400 mt-0.5">{r.meterReading} หน่วย · {fmt(r.date)}{r.note ? ` · ${r.note}` : ""}</p></div><span className="text-sm font-bold text-amber-600 tabular-nums">{r.totalCost.toLocaleString()} ฿</span></div></div>))}
+              </div>
+            ) : (<div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-amber-100 py-5 text-amber-300"><Zap className="h-5 w-5 mb-1 opacity-50" /><p className="text-xs">ยังไม่มีบันทึกค่าไฟ</p></div>)}
+          </section>
+
+          {/* Section: ค่าบำรุงรักษา */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2"><div className="h-5 w-1 rounded-full bg-violet-400" /><h4 className="text-sm font-bold text-gray-800">ค่าบำรุงรักษา</h4><span className="text-[10px] text-gray-400 font-medium">คนละ 150 บาท</span></div>
+              {canEdit && !showMaintForm && (<button onClick={() => setShowMaintForm(true)} className="flex items-center gap-1 rounded-lg bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-600 hover:bg-violet-100 transition cursor-pointer"><Plus className="h-3.5 w-3.5" /> บันทึกประจำเดือน</button>)}
+            </div>
+            {showMaintForm && (
+              <div className="mb-3 rounded-xl border border-violet-100 bg-violet-50/70 p-4 space-y-3">
+                <p className="text-xs font-bold text-violet-800">ค่าบำรุงรักษา · {fmtMonth(currentMonth)}</p>
+                <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-violet-200 bg-white px-4 py-3 hover:bg-violet-50 transition">
+                  <input type="checkbox" checked={maintCharged} onChange={e => setMaintCharged(e.target.checked)} className="h-4 w-4 rounded accent-violet-600 cursor-pointer" />
+                  <div><p className="text-sm font-semibold text-gray-800">เก็บค่าบำรุงรักษา</p><p className="text-[10px] text-gray-400">{maintCharged ? `${residents.length} คน × 150 = ${(residents.length*150).toLocaleString()} บาท` : "ไม่เก็บเดือนนี้"}</p></div>
+                  {maintCharged && <span className="ml-auto text-base font-bold text-violet-600">{(residents.length*150).toLocaleString()} ฿</span>}
+                </label>
+                <input value={maintNote} onChange={e => setMaintNote(e.target.value)} placeholder="หมายเหตุ (ถ้ามี)" className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-violet-400" />
+                <div className="flex gap-2"><button onClick={handleSaveMaintenance} disabled={maintSaving} className="flex-1 rounded-lg bg-violet-500 py-2 text-xs font-bold text-white hover:bg-violet-600 disabled:opacity-60 transition cursor-pointer">{maintSaving ? "กำลังบันทึก..." : "บันทึก"}</button><button onClick={() => { setShowMaintForm(false); setMaintNote(""); setMaintCharged(false); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-400 hover:bg-gray-50 cursor-pointer"><X className="h-3.5 w-3.5" /></button></div>
+              </div>
+            )}
+            {maintRecords.length > 0 ? (
+              <div className="relative pl-5"><div className="absolute left-2 top-0 bottom-0 w-px bg-violet-200" />
+                {maintRecords.map((r) => (<div key={r.id} className="relative mb-2.5 flex items-start gap-3"><div className={`absolute -left-3 mt-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white shadow-sm ${r.charged ? "bg-violet-500" : "bg-gray-300"}`}><span className="text-[7px] font-bold text-white">{r.charged ? "✓" : "–"}</span></div><div className="ml-1.5 flex flex-1 items-center justify-between rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"><div><p className="text-xs font-bold text-gray-700">{fmtMonth(r.month)}</p><p className="text-[10px] text-gray-400 mt-0.5">{r.charged ? `เก็บค่าบำรุง · ${r.occupants} คน` : "ไม่เก็บเดือนนี้"}{r.note ? ` · ${r.note}` : ""}</p></div><span className={`text-sm font-bold tabular-nums ${r.charged ? "text-violet-600" : "text-gray-300"}`}>{r.charged ? `${r.totalCost.toLocaleString()} ฿` : "–"}</span></div></div>))}
+              </div>
+            ) : (<div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-violet-100 py-5 text-violet-300"><Calendar className="h-5 w-5 mb-1 opacity-50" /><p className="text-xs">ยังไม่มีบันทึกค่าบำรุงรักษา</p></div>)}
+          </section>
+
+          {/* Section: Timeline */}
+          <section>
+            <div className="flex items-center gap-2 mb-3"><div className="h-5 w-1 rounded-full bg-emerald-400" /><h4 className="text-sm font-bold text-gray-800">ประวัติการเข้า-ออก</h4><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{occRecords.length}</span></div>
+            {occRecords.length > 0 ? (
+              <div className="relative pl-5"><div className="absolute left-2 top-0 bottom-0 w-px bg-emerald-100" />
+                {occRecords.map((r) => (<div key={r.id} className="relative mb-2.5 flex items-start gap-3"><div className={`absolute -left-3 mt-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white shadow-sm ${r.action==="checkin" ? "bg-emerald-500" : "bg-orange-400"}`}>{r.action==="checkin" ? <LogIn className="h-2 w-2 text-white" /> : <LogOut className="h-2 w-2 text-white" />}</div><div className="ml-1.5 flex flex-1 items-center justify-between rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"><div><p className="text-xs font-bold text-gray-700">{r.workerName}</p><p className={`text-[10px] font-semibold mt-0.5 ${r.action==="checkin" ? "text-emerald-600" : "text-orange-500"}`}>{r.action==="checkin" ? "เข้าพัก" : "ออกจากห้อง"}</p></div><span className="text-[10px] text-gray-400">{fmt(r.date)}</span></div></div>))}
+              </div>
+            ) : (<div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-emerald-100 py-5 text-emerald-300"><LogIn className="h-5 w-5 mb-1 opacity-50" /><p className="text-xs">ยังไม่มีประวัติ</p></div>)}
+          </section>
+        </div>
       </div>
     </div>
   );
