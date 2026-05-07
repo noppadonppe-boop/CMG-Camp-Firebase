@@ -5,6 +5,8 @@ import {
   orderBy,
   onSnapshot,
   addDoc,
+  deleteDoc,
+  doc,
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
@@ -55,8 +57,9 @@ export async function addOccupancyRecord(
 // ─── Electricity Record ───────────────────────────────────────────────────────
 export interface ElectricityRecord {
   id: string;
-  meterReading: number;   // หน่วย kWh
-  totalCost: number;      // บาท (meterReading * 8)
+  meterReading: number;   // หน่วย kWh (ค่ามิเตอร์ปัจจุบัน)
+  usedUnits?: number;     // จำนวนหน่วยที่ใช้ (meterReading - previousReading) - ไม่มีในครั้งแรก
+  totalCost: number;      // บาท (usedUnits * 8) - ครั้งแรกจะเป็น 0
   month: string;          // "YYYY-MM"
   note?: string;
   date: Timestamp | null;
@@ -91,6 +94,11 @@ export async function addElectricityRecord(
     collection(db, ROOT, ROOT_DOC, "rooms", roomId, "electricityHistory"),
     { ...data, date: serverTimestamp() }
   );
+}
+
+export async function deleteElectricityRecord(roomId: string, recordId: string) {
+  const docRef = doc(db, ROOT, ROOT_DOC, "rooms", roomId, "electricityHistory", recordId);
+  await deleteDoc(docRef);
 }
 
 // ─── Maintenance Fee Record ────────────────────────────────────────────────────
@@ -133,4 +141,9 @@ export async function addMaintenanceFeeRecord(
     collection(db, ROOT, ROOT_DOC, "rooms", roomId, "maintenanceFeeHistory"),
     { ...data, date: serverTimestamp() }
   );
+}
+
+export async function deleteMaintenanceFeeRecord(roomId: string, recordId: string) {
+  const docRef = doc(db, ROOT, ROOT_DOC, "rooms", roomId, "maintenanceFeeHistory", recordId);
+  await deleteDoc(docRef);
 }

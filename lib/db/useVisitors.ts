@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { onSnapshot, query, orderBy, addDoc, updateDoc } from "firebase/firestore";
-import { rootCol, rootDoc } from "@/lib/seed-firestore";
+import { rootCol, rootDoc } from "@/lib/firestore-helpers";
 
 export interface Visitor {
   id: string;

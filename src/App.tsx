@@ -20,19 +20,12 @@ import BillingMeterReadingsPage from "@/pages/BillingMeterReadingsPage";
 import BillingInvoicesPage from "@/pages/BillingInvoicesPage";
 import ManualPage from "@/pages/ManualPage";
 import UserManagementPage from "@/pages/UserManagementPage";
-import { useAutoSeed } from "@/lib/seed-firestore";
-
-function AppInner() {
-  useAutoSeed();
-  return null;
-}
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <CampProvider>
-          <AppInner />
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<LoginPage />} />

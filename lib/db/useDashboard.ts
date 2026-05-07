@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { onSnapshot } from "firebase/firestore";
-import { rootDoc } from "@/lib/seed-firestore";
+import { rootDoc } from "@/lib/firestore-helpers";
 
 export interface AccessLog {
   id: number;

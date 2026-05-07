@@ -27,6 +27,9 @@ function useAllRoomBilling(rooms: Room[], month: string) {
 
   useEffect(() => {
     if (rooms.length === 0) { setLoading(false); return; }
+    
+    console.log('🏠 Querying maintenance data for rooms:', rooms.map(r => ({ id: r.id, number: r.number })));
+    
     let remaining = rooms.length * 2;
     const done = () => { remaining--; if (remaining === 0) setLoading(false); };
 
@@ -41,7 +44,31 @@ function useAllRoomBilling(rooms: Room[], month: string) {
       }, done);
 
       const u2 = onSnapshot(maintQ, (snap) => {
-        const rec = snap.docs.map(d => ({ id: d.id, ...d.data() } as MaintenanceFeeRecord)).find(r => r.month === month) ?? null;
+        const allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() } as MaintenanceFeeRecord));
+        
+        // Debug: แสดงข้อมูลทั้งหมด
+        console.log(`🔍 Room ${room.number} (${room.id}):`, {
+          totalRecords: allRecords.length,
+          records: allRecords.map(r => ({ 
+            month: r.month, 
+            charged: r.charged, 
+            totalCost: r.totalCost,
+            occupants: r.occupants 
+          }))
+        });
+        
+        const rec = allRecords.find(r => r.month === month) ?? null;
+        
+        if (!rec && allRecords.length > 0) {
+          console.log(`⚠️ Room ${room.number}: ไม่พบข้อมูลสำหรับเดือน "${month}" แต่มีข้อมูลเดือนอื่น:`, 
+            allRecords.map(r => r.month)
+          );
+        } else if (!rec) {
+          console.log(`❌ Room ${room.number}: ไม่มีข้อมูลค่าบำรุงเลย`);
+        } else {
+          console.log(`✅ Room ${room.number}: พบข้อมูลเดือน ${month}:`, rec);
+        }
+        
         setMaintMap(prev => ({ ...prev, [room.id]: rec }));
         done();
       }, done);
@@ -67,6 +94,17 @@ function RoomBillingRow({ room, occupants, elec, maint }: {
   const maintenance = maint?.charged ? (maint.totalCost) : 0;
   const total = water + electricity + maintenance;
 
+  // Debug: log maintenance data
+  if (room.number === "A-2/1") {
+    console.log(`Room ${room.number} maintenance data:`, {
+      maint,
+      charged: maint?.charged,
+      totalCost: maint?.totalCost,
+      maintenance,
+      occupants
+    });
+  }
+
   return (
     <tr className="border-b border-gray-50 hover:bg-gray-50/60 transition">
       <td className="py-3 pl-4 pr-2">
@@ -83,9 +121,15 @@ function RoomBillingRow({ room, occupants, elec, maint }: {
         {elec ? <span className="text-amber-600">{fmtBaht(electricity)}</span> : <span className="text-gray-300">ไม่มีข้อมูล</span>}
       </td>
       <td className="py-3 px-2 text-right text-xs font-semibold tabular-nums">
-        {maint
-          ? (maint.charged ? <span className="text-violet-600">{fmtBaht(maintenance)}</span> : <span className="text-gray-400">ไม่เก็บ</span>)
-          : <span className="text-gray-300">ไม่มีข้อมูล</span>}
+        {maint ? (
+          maint.charged ? (
+            <span className="text-violet-600">{fmtBaht(maintenance)}</span>
+          ) : (
+            <span className="text-gray-400">ไม่เก็บ</span>
+          )
+        ) : (
+          <span className="text-gray-300">ไม่มีข้อมูล</span>
+        )}
       </td>
       <td className="py-3 pl-2 pr-4 text-right">
         <span className="text-sm font-bold text-gray-800 tabular-nums">{fmtBaht(total)} ฿</span>
@@ -118,6 +162,9 @@ export default function BillingPage() {
   const filteredRooms = rooms.filter(r => availableZones.some(z => z.id === r.zoneId) && r.status !== "maintenance");
 
   const { elecMap, maintMap, loading: billingLoading } = useAllRoomBilling(filteredRooms, selectedMonth);
+
+  console.log('Selected month:', selectedMonth);
+  console.log('Maintenance map:', maintMap);
 
   const loading = roomsLoading || zonesLoading || campsLoading || billingLoading;
 

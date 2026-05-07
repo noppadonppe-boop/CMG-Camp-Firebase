@@ -20,6 +20,8 @@ import {
   addOccupancyRecord,
   addElectricityRecord,
   addMaintenanceFeeRecord,
+  deleteElectricityRecord,
+  deleteMaintenanceFeeRecord,
 } from "@/lib/db/useRoomHistory";
 
 
@@ -159,6 +161,8 @@ function fmt(ts: import("firebase/firestore").Timestamp | null) {
 }
 
 function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }: { room: Room; workers: Worker[]; onClose: () => void; canEdit?: boolean; onEditRoom?: () => void; onDeleteRoom?: () => void }) {
+  const { userProfile } = useAuth();
+  const isMasterAdmin = userProfile?.roles?.includes("MasterAdmin");
   const residents = workers.filter((w) => w.roomId === room.id);
   const compStatus = getComputedStatus(room, residents.length);
   const cfg = STATUS_CONFIG[compStatus];
@@ -191,18 +195,92 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
     catch { alert("เพิ่มผู้พักไม่สำเร็จ"); }
   }
   async function handleSaveElectricity() {
-    const units = parseFloat(meterVal);
-    if (!units || units <= 0) { alert("กรุณาใส่ค่ามิเตอร์ที่ถูกต้อง"); return; }
+    const currentReading = parseFloat(meterVal);
+    if (!currentReading || currentReading <= 0) { alert("กรุณาใส่ค่ามิเตอร์ที่ถูกต้อง"); return; }
+    
     setElecSaving(true);
-    try { await addElectricityRecord(room.id, { meterReading: units, totalCost: units * 8, month: currentMonth, note: elecNote }); setMeterVal(""); setElecNote(""); setShowElecForm(false); }
+    try { 
+      // ตรวจสอบว่ามีบันทึกก่อนหน้าหรือไม่
+      const isFirstRecord = elecRecords.length === 0;
+      let totalCost = 0;
+      let usedUnits = 0;
+      
+      if (!isFirstRecord) {
+        // ครั้งที่ 2 เป็นต้นไป: คำนวนจากผลต่าง
+        const previousReading = elecRecords[0].meterReading;
+        if (currentReading <= previousReading) {
+          alert(`ค่ามิเตอร์ปัจจุบันต้องมากกว่าค่ามิเตอร์ครั้งก่อน (${previousReading} หน่วย)`);
+          setElecSaving(false);
+          return;
+        }
+        usedUnits = currentReading - previousReading;
+        totalCost = usedUnits * 8;
+      }
+      // ครั้งแรก: ไม่คำนวนเงิน (totalCost = 0, usedUnits = 0)
+      
+      await addElectricityRecord(room.id, { 
+        meterReading: currentReading, 
+        usedUnits,
+        totalCost, 
+        month: currentMonth, 
+        note: elecNote 
+      }); 
+      setMeterVal(""); 
+      setElecNote(""); 
+      setShowElecForm(false); 
+    }
     catch { alert("บันทึกไม่สำเร็จ"); }
     setElecSaving(false);
   }
   async function handleSaveMaintenance() {
     setMaintSaving(true);
-    try { const total = maintCharged ? 150 * residents.length : 0; await addMaintenanceFeeRecord(room.id, { month: currentMonth, charged: maintCharged, costPerPerson: 150, occupants: residents.length, totalCost: total, note: maintNote }); setMaintNote(""); setShowMaintForm(false); }
-    catch { alert("บันทึกไม่สำเร็จ"); }
+    try { 
+      const total = maintCharged ? 150 * residents.length : 0; 
+      const data = { 
+        month: currentMonth, 
+        charged: maintCharged, 
+        costPerPerson: 150, 
+        occupants: residents.length, 
+        totalCost: total, 
+        note: maintNote 
+      };
+      console.log('💾 Saving maintenance fee:', { roomId: room.id, roomNumber: room.number, data });
+      await addMaintenanceFeeRecord(room.id, data); 
+      console.log('✅ Maintenance fee saved successfully');
+      setMaintNote(""); 
+      setShowMaintForm(false); 
+    }
+    catch (error) { 
+      console.error('❌ Failed to save maintenance fee:', error);
+      alert("บันทึกไม่สำเร็จ"); 
+    }
     setMaintSaving(false);
+  }
+  
+  async function handleDeleteElectricity(recordId: string, month: string) {
+    if (!window.confirm(`ต้องการลบบันทึกค่าไฟฟ้า ${fmtMonth(month)} หรือไม่?`)) return;
+    try { 
+      console.log('Deleting electricity record:', { roomId: room.id, recordId });
+      await deleteElectricityRecord(room.id, recordId); 
+      console.log('Delete successful');
+    }
+    catch (error) { 
+      console.error('Delete error:', error);
+      alert(`ลบไม่สำเร็จ: ${error instanceof Error ? error.message : 'Unknown error'}`); 
+    }
+  }
+  
+  async function handleDeleteMaintenance(recordId: string, month: string) {
+    if (!window.confirm(`ต้องการลบบันทึกค่าบำรุงรักษา ${fmtMonth(month)} หรือไม่?`)) return;
+    try { 
+      console.log('Deleting maintenance record:', { roomId: room.id, recordId });
+      await deleteMaintenanceFeeRecord(room.id, recordId); 
+      console.log('Delete successful');
+    }
+    catch (error) { 
+      console.error('Delete error:', error);
+      alert(`ลบไม่สำเร็จ: ${error instanceof Error ? error.message : 'Unknown error'}`); 
+    }
   }
 
   return (
@@ -279,9 +357,25 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
             {showElecForm && (
               <div className="mb-3 rounded-xl border border-amber-100 bg-amber-50/70 p-4 space-y-3">
                 <p className="text-xs font-bold text-amber-800">บันทึกค่ามิเตอร์ · {fmtMonth(currentMonth)}</p>
+                {elecRecords.length > 0 && (
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
+                    <p className="text-[10px] text-blue-700 font-semibold">มิเตอร์ครั้งก่อน: <span className="font-bold">{elecRecords[0].meterReading.toLocaleString()}</span> หน่วย</p>
+                  </div>
+                )}
                 <div className="flex gap-3">
-                  <div className="flex-1"><label className="mb-1 block text-[10px] font-semibold text-amber-700">จำนวนหน่วย (kWh)</label><input type="number" min={0} value={meterVal} onChange={e => setMeterVal(e.target.value)} placeholder="เช่น 125.5" className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400" /></div>
-                  {meterVal && parseFloat(meterVal) > 0 && (<div className="flex flex-col justify-end rounded-xl bg-white border border-amber-200 px-4 py-2 text-right shrink-0"><span className="text-[10px] text-gray-400">{parseFloat(meterVal)} × 8</span><span className="text-base font-bold text-amber-600">{(parseFloat(meterVal)*8).toLocaleString()} ฿</span></div>)}
+                  <div className="flex-1"><label className="mb-1 block text-[10px] font-semibold text-amber-700">ค่ามิเตอร์ปัจจุบัน (kWh)</label><input type="number" min={0} step="0.1" value={meterVal} onChange={e => setMeterVal(e.target.value)} placeholder="เช่น 1775.5" className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400" /></div>
+                  {meterVal && parseFloat(meterVal) > 0 && elecRecords.length > 0 && parseFloat(meterVal) > elecRecords[0].meterReading && (
+                    <div className="flex flex-col justify-end rounded-xl bg-white border border-amber-200 px-4 py-2 text-right shrink-0">
+                      <span className="text-[10px] text-gray-400">{(parseFloat(meterVal) - elecRecords[0].meterReading).toFixed(1)} หน่วย × 8</span>
+                      <span className="text-base font-bold text-amber-600">{((parseFloat(meterVal) - elecRecords[0].meterReading) * 8).toLocaleString()} ฿</span>
+                    </div>
+                  )}
+                  {meterVal && parseFloat(meterVal) > 0 && elecRecords.length === 0 && (
+                    <div className="flex flex-col justify-end rounded-xl bg-white border border-blue-200 px-4 py-2 text-right shrink-0">
+                      <span className="text-[10px] text-blue-600 font-semibold">บันทึกครั้งแรก</span>
+                      <span className="text-sm text-gray-500">ไม่คิดค่าไฟ</span>
+                    </div>
+                  )}
                 </div>
                 <input value={elecNote} onChange={e => setElecNote(e.target.value)} placeholder="หมายเหตุ (ถ้ามี)" className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-400" />
                 <div className="flex gap-2"><button onClick={handleSaveElectricity} disabled={elecSaving} className="flex-1 rounded-lg bg-amber-500 py-2 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-60 transition cursor-pointer">{elecSaving ? "กำลังบันทึก..." : "บันทึก"}</button><button onClick={() => { setShowElecForm(false); setMeterVal(""); setElecNote(""); }} className="rounded-lg border border-gray-200 px-3 py-2 text-gray-400 hover:bg-gray-50 cursor-pointer"><X className="h-3.5 w-3.5" /></button></div>
@@ -289,7 +383,50 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
             )}
             {elecRecords.length > 0 ? (
               <div className="relative pl-5"><div className="absolute left-2 top-0 bottom-0 w-px bg-amber-200" />
-                {elecRecords.map((r) => (<div key={r.id} className="relative mb-2.5 flex items-start gap-3"><div className="absolute -left-3 mt-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 border-2 border-white shadow-sm"><Zap className="h-2 w-2 text-white" /></div><div className="ml-1.5 flex flex-1 items-center justify-between rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"><div><p className="text-xs font-bold text-gray-700">{fmtMonth(r.month)}</p><p className="text-[10px] text-gray-400 mt-0.5">{r.meterReading} หน่วย · {fmt(r.date)}{r.note ? ` · ${r.note}` : ""}</p></div><span className="text-sm font-bold text-amber-600 tabular-nums">{r.totalCost.toLocaleString()} ฿</span></div></div>))}
+                {elecRecords.map((r, idx) => {
+                  const isFirstRecord = idx === elecRecords.length - 1;
+                  return (
+                    <div key={r.id} className="relative mb-2.5 flex items-start gap-3 group">
+                      <div className="absolute -left-3 mt-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 border-2 border-white shadow-sm">
+                        <Zap className="h-2 w-2 text-white" />
+                      </div>
+                      <div className="ml-1.5 flex flex-1 flex-col rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-gray-700">{fmtMonth(r.month)}</p>
+                            <p className="text-[10px] text-gray-500 mt-0.5">
+                              มิเตอร์: <span className="font-semibold text-gray-700">{r.meterReading.toLocaleString()}</span> หน่วย
+                              {!isFirstRecord && r.usedUnits !== undefined && (
+                                <span className="text-amber-600"> · ใช้ไป {r.usedUnits.toFixed(1)} หน่วย</span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              {fmt(r.date)}{r.note ? ` · ${r.note}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-right">
+                              {isFirstRecord ? (
+                                <span className="text-xs font-semibold text-blue-600">บันทึกครั้งแรก</span>
+                              ) : (
+                                <span className="text-sm font-bold text-amber-600 tabular-nums">{r.totalCost.toLocaleString()} ฿</span>
+                              )}
+                            </div>
+                            {isMasterAdmin && (
+                              <button 
+                                onClick={() => handleDeleteElectricity(r.id, r.month)}
+                                className="opacity-0 group-hover:opacity-100 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-500 transition cursor-pointer"
+                                title="ลบรายการ"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (<div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-amber-100 py-5 text-amber-300"><Zap className="h-5 w-5 mb-1 opacity-50" /><p className="text-xs">ยังไม่มีบันทึกค่าไฟ</p></div>)}
           </section>
@@ -314,7 +451,31 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
             )}
             {maintRecords.length > 0 ? (
               <div className="relative pl-5"><div className="absolute left-2 top-0 bottom-0 w-px bg-violet-200" />
-                {maintRecords.map((r) => (<div key={r.id} className="relative mb-2.5 flex items-start gap-3"><div className={`absolute -left-3 mt-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white shadow-sm ${r.charged ? "bg-violet-500" : "bg-gray-300"}`}><span className="text-[7px] font-bold text-white">{r.charged ? "✓" : "–"}</span></div><div className="ml-1.5 flex flex-1 items-center justify-between rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm"><div><p className="text-xs font-bold text-gray-700">{fmtMonth(r.month)}</p><p className="text-[10px] text-gray-400 mt-0.5">{r.charged ? `เก็บค่าบำรุง · ${r.occupants} คน` : "ไม่เก็บเดือนนี้"}{r.note ? ` · ${r.note}` : ""}</p></div><span className={`text-sm font-bold tabular-nums ${r.charged ? "text-violet-600" : "text-gray-300"}`}>{r.charged ? `${r.totalCost.toLocaleString()} ฿` : "–"}</span></div></div>))}
+                {maintRecords.map((r) => (
+                  <div key={r.id} className="relative mb-2.5 flex items-start gap-3 group">
+                    <div className={`absolute -left-3 mt-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white shadow-sm ${r.charged ? "bg-violet-500" : "bg-gray-300"}`}>
+                      <span className="text-[7px] font-bold text-white">{r.charged ? "✓" : "–"}</span>
+                    </div>
+                    <div className="ml-1.5 flex flex-1 items-center justify-between rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm hover:shadow-md transition-shadow">
+                      <div>
+                        <p className="text-xs font-bold text-gray-700">{fmtMonth(r.month)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{r.charged ? `เก็บค่าบำรุง · ${r.occupants} คน` : "ไม่เก็บเดือนนี้"}{r.note ? ` · ${r.note}` : ""}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-bold tabular-nums ${r.charged ? "text-violet-600" : "text-gray-300"}`}>{r.charged ? `${r.totalCost.toLocaleString()} ฿` : "–"}</span>
+                        {isMasterAdmin && (
+                          <button 
+                            onClick={() => handleDeleteMaintenance(r.id, r.month)}
+                            className="opacity-0 group-hover:opacity-100 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-500 transition cursor-pointer"
+                            title="ลบรายการ"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (<div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-violet-100 py-5 text-violet-300"><Calendar className="h-5 w-5 mb-1 opacity-50" /><p className="text-xs">ยังไม่มีบันทึกค่าบำรุงรักษา</p></div>)}
           </section>

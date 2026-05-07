@@ -10,7 +10,7 @@ import {
   doc,
   serverTimestamp,
 } from "firebase/firestore";
-import { rootCol, rootDoc } from "@/lib/seed-firestore";
+import { rootCol, rootDoc } from "@/lib/firestore-helpers";
 
 export type RoomStatus = "empty" | "partial" | "full" | "maintenance";
 

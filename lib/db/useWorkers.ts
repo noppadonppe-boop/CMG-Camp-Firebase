@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { onSnapshot, query, orderBy, addDoc } from "firebase/firestore";
-import { rootCol } from "@/lib/seed-firestore";
+import { rootCol } from "@/lib/firestore-helpers";
 
 export interface Worker {
   id: string;

@@ -11,7 +11,6 @@ import {
   BookOpen,
   Receipt,
   ShieldCheck,
-  HardDrive,
 } from "lucide-react";
 
 const navItems = [
@@ -23,7 +22,6 @@ const navItems = [
   { label: "ตรวจสุขอนามัย", subLabel: "Hygiene", href: "/hygiene", icon: ShieldCheck },
   { label: "ระบบบิล", subLabel: "Billing", href: "/billing", icon: Receipt },
   { label: "คู่มือการใช้งาน", subLabel: "User Manual", href: "/manual", icon: BookOpen },
-  { label: "Seed Database", subLabel: "Admin only", href: "/admin/seed", icon: HardDrive },
 ];
 
 export default function Sidebar() {

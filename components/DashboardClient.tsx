@@ -31,7 +31,6 @@ export default function DashboardClient() {
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
         <AlertTriangle className="h-8 w-8 text-amber-400" />
         <p className="text-sm text-gray-500">ไม่พบข้อมูลสำหรับแคมป์นี้</p>
-        <p className="text-xs text-gray-400">กรุณาไปที่ <span className="font-mono">/admin/seed</span> เพื่อ seed ข้อมูล</p>
       </div>
     );
   }
