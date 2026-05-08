@@ -4,6 +4,7 @@ import {
   query,
   orderBy,
   onSnapshot,
+  getDocs,
   addDoc,
   doc,
   updateDoc,
@@ -93,32 +94,48 @@ export function useMeterReadings(billingMonth?: Date) {
   const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
-    let q;
-    if (billingMonth) {
-      const start = Timestamp.fromDate(new Date(billingMonth.getFullYear(), billingMonth.getMonth(), 1));
-      const end   = Timestamp.fromDate(new Date(billingMonth.getFullYear(), billingMonth.getMonth() + 1, 1));
-      q = query(
-        collection(db, ROOT, ROOT_DOC, "meter_readings"),
-        where("billingMonth", ">=", start),
-        where("billingMonth", "<",  end),
-        orderBy("billingMonth"),
-        orderBy("roomNumber")
-      );
-    } else {
-      q = query(
-        collection(db, ROOT, ROOT_DOC, "meter_readings"),
-        orderBy("roomNumber")
-      );
+    let isCancelled = false;
+
+    async function loadReadings() {
+      try {
+        let q;
+        if (billingMonth) {
+          const start = Timestamp.fromDate(new Date(billingMonth.getFullYear(), billingMonth.getMonth(), 1));
+          const end   = Timestamp.fromDate(new Date(billingMonth.getFullYear(), billingMonth.getMonth() + 1, 1));
+          q = query(
+            collection(db, ROOT, ROOT_DOC, "meter_readings"),
+            where("billingMonth", ">=", start),
+            where("billingMonth", "<",  end),
+            orderBy("billingMonth"),
+            orderBy("roomNumber")
+          );
+        } else {
+          q = query(
+            collection(db, ROOT, ROOT_DOC, "meter_readings"),
+            orderBy("roomNumber")
+          );
+        }
+        
+        const snap = await getDocs(q);
+        
+        if (!isCancelled) {
+          setReadings(snap.docs.map((d) => ({ id: d.id, ...d.data() } as MeterReading)));
+          setLoading(false);
+          console.log(`📖 [Read] Meter readings: ${snap.docs.length} records`);
+        }
+      } catch (error) {
+        console.error('Error loading meter readings:', error);
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
     }
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setReadings(snap.docs.map((d) => ({ id: d.id, ...d.data() } as MeterReading)));
-        setLoading(false);
-      },
-      () => setLoading(false)
-    );
-    return unsub;
+
+    loadReadings();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [billingMonth?.getFullYear(), billingMonth?.getMonth()]);
 
   return { readings, loading };

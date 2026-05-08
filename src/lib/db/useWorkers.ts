@@ -24,6 +24,15 @@ export interface Worker {
   zoneId: string;
   docType: string;
   idNumber: string;
+  // Employment type checkboxes
+  employmentTypes?: {
+    dc?: boolean;
+    subcontract?: boolean;
+    supply?: boolean;
+    foreign?: boolean;
+  };
+  // Team/Set name
+  teamName?: string;
 }
 
 const ROOT = "cmg-camp-manager";

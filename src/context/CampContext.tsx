@@ -9,12 +9,13 @@ interface CampContextValue {
   setSelectedCamp: (camp: Camp) => void;
   camps: Camp[];
   loading: boolean;
+  refreshCamps: () => void;
 }
 
 const CampContext = createContext<CampContextValue | null>(null);
 
 export function CampProvider({ children }: { children: ReactNode }) {
-  const { camps, loading } = useCamps();
+  const { camps, loading, refresh } = useCamps();
   const [selectedCamp, setSelectedCamp] = useState<Camp | null>(null);
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export function CampProvider({ children }: { children: ReactNode }) {
   }, [camps, selectedCamp]);
 
   return (
-    <CampContext.Provider value={{ selectedCamp, setSelectedCamp, camps, loading }}>
+    <CampContext.Provider value={{ selectedCamp, setSelectedCamp, camps, loading, refreshCamps: refresh }}>
       {children}
     </CampContext.Provider>
   );

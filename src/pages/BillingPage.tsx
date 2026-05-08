@@ -3,8 +3,7 @@ import { Droplets, Zap, Wrench, ChevronDown, Loader2, TrendingUp, Building2 } fr
 import { useRooms, useZones, type Room } from "@/lib/db/useRooms";
 import { useWorkers } from "@/lib/db/useWorkers";
 import { useCamps } from "@/lib/db/useCamps";
-import { useElectricityHistory, useMaintenanceFeeHistory } from "@/lib/db/useRoomHistory";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { ElectricityRecord, MaintenanceFeeRecord } from "@/lib/db/useRoomHistory";
 
@@ -19,65 +18,84 @@ function fmtMonthLabel(m: string) {
   return new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" });
 }
 
-// ── hook: fetch all rooms' subcollection for a given month ────────────────────
+// ── hook: fetch all rooms' subcollection for a given month (ONE-TIME READ) ────
 function useAllRoomBilling(rooms: Room[], month: string) {
   const [elecMap, setElecMap] = useState<Record<string, ElectricityRecord | null>>({});
   const [maintMap, setMaintMap] = useState<Record<string, MaintenanceFeeRecord | null>>({});
   const [loading, setLoading] = useState(true);
 
+  // Create stable room IDs string to avoid infinite loop
+  const roomIds = rooms.map(r => r.id).sort().join(',');
+
   useEffect(() => {
-    if (rooms.length === 0) { setLoading(false); return; }
+    if (rooms.length === 0) { 
+      setLoading(false); 
+      setElecMap({});
+      setMaintMap({});
+      return; 
+    }
     
-    console.log('🏠 Querying maintenance data for rooms:', rooms.map(r => ({ id: r.id, number: r.number })));
+    console.log('📊 [Billing] Loading data for', rooms.length, 'rooms, month:', month);
     
-    let remaining = rooms.length * 2;
-    const done = () => { remaining--; if (remaining === 0) setLoading(false); };
+    let isCancelled = false;
 
-    const unsubs = rooms.flatMap((room) => {
-      const elecQ = query(collection(db, ROOT, ROOT_DOC, "rooms", room.id, "electricityHistory"), orderBy("date", "desc"));
-      const maintQ = query(collection(db, ROOT, ROOT_DOC, "rooms", room.id, "maintenanceFeeHistory"), orderBy("date", "desc"));
+    async function loadBillingData() {
+      setLoading(true);
+      const elecData: Record<string, ElectricityRecord | null> = {};
+      const maintData: Record<string, MaintenanceFeeRecord | null> = {};
 
-      const u1 = onSnapshot(elecQ, (snap) => {
-        const rec = snap.docs.map(d => ({ id: d.id, ...d.data() } as ElectricityRecord)).find(r => r.month === month) ?? null;
-        setElecMap(prev => ({ ...prev, [room.id]: rec }));
-        done();
-      }, done);
+      try {
+        // Load all rooms' data in parallel
+        await Promise.all(
+          rooms.map(async (room) => {
+            try {
+              // Load electricity history
+              const elecQ = query(
+                collection(db, ROOT, ROOT_DOC, "rooms", room.id, "electricityHistory"),
+                orderBy("date", "desc")
+              );
+              const elecSnap = await getDocs(elecQ);
+              const elecRecords = elecSnap.docs.map(d => ({ id: d.id, ...d.data() } as ElectricityRecord));
+              elecData[room.id] = elecRecords.find(r => r.month === month) ?? null;
 
-      const u2 = onSnapshot(maintQ, (snap) => {
-        const allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() } as MaintenanceFeeRecord));
-        
-        // Debug: แสดงข้อมูลทั้งหมด
-        console.log(`🔍 Room ${room.number} (${room.id}):`, {
-          totalRecords: allRecords.length,
-          records: allRecords.map(r => ({ 
-            month: r.month, 
-            charged: r.charged, 
-            totalCost: r.totalCost,
-            occupants: r.occupants 
-          }))
-        });
-        
-        const rec = allRecords.find(r => r.month === month) ?? null;
-        
-        if (!rec && allRecords.length > 0) {
-          console.log(`⚠️ Room ${room.number}: ไม่พบข้อมูลสำหรับเดือน "${month}" แต่มีข้อมูลเดือนอื่น:`, 
-            allRecords.map(r => r.month)
-          );
-        } else if (!rec) {
-          console.log(`❌ Room ${room.number}: ไม่มีข้อมูลค่าบำรุงเลย`);
-        } else {
-          console.log(`✅ Room ${room.number}: พบข้อมูลเดือน ${month}:`, rec);
+              // Load maintenance history
+              const maintQ = query(
+                collection(db, ROOT, ROOT_DOC, "rooms", room.id, "maintenanceFeeHistory"),
+                orderBy("date", "desc")
+              );
+              const maintSnap = await getDocs(maintQ);
+              const maintRecords = maintSnap.docs.map(d => ({ id: d.id, ...d.data() } as MaintenanceFeeRecord));
+              maintData[room.id] = maintRecords.find(r => r.month === month) ?? null;
+
+              console.log(`✅ Room ${room.number}: elec=${elecData[room.id] ? '✓' : '✗'}, maint=${maintData[room.id] ? '✓' : '✗'}`);
+            } catch (error) {
+              console.error(`❌ Error loading room ${room.number}:`, error);
+              elecData[room.id] = null;
+              maintData[room.id] = null;
+            }
+          })
+        );
+
+        if (!isCancelled) {
+          setElecMap(elecData);
+          setMaintMap(maintData);
+          console.log('✅ [Billing] Data loaded successfully');
         }
-        
-        setMaintMap(prev => ({ ...prev, [room.id]: rec }));
-        done();
-      }, done);
+      } catch (error) {
+        console.error('❌ [Billing] Error loading data:', error);
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
 
-      return [u1, u2];
-    });
+    loadBillingData();
 
-    return () => unsubs.forEach(u => u());
-  }, [rooms, month]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [roomIds, month]); // ใช้ roomIds แทน rooms เพื่อป้องกัน infinite loop
 
   return { elecMap, maintMap, loading };
 }

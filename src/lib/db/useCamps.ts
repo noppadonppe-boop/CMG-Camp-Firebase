@@ -3,7 +3,7 @@ import {
   collection,
   query,
   orderBy,
-  onSnapshot,
+  getDocs,
   addDoc,
   doc,
   updateDoc,
@@ -27,24 +27,43 @@ const ROOT_DOC = "root";
 export function useCamps() {
   const [camps, setCamps]     = useState<Camp[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = () => setRefreshKey(prev => prev + 1);
 
   useEffect(() => {
-    const q = query(
-      collection(db, ROOT, ROOT_DOC, "camps"),
-      orderBy("name")
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setCamps(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Camp)));
-        setLoading(false);
-      },
-      () => setLoading(false)
-    );
-    return unsub;
-  }, []);
+    let isCancelled = false;
 
-  return { camps, loading };
+    async function loadCamps() {
+      setLoading(true);
+      try {
+        const q = query(
+          collection(db, ROOT, ROOT_DOC, "camps"),
+          orderBy("name")
+        );
+        const snap = await getDocs(q);
+        
+        if (!isCancelled) {
+          setCamps(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Camp)));
+          setLoading(false);
+          console.log(`📖 [Read] Camps: ${snap.docs.length} records`);
+        }
+      } catch (error) {
+        console.error('Error loading camps:', error);
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadCamps();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [refreshKey]);
+
+  return { camps, loading, refresh };
 }
 
 export async function addCamp(data: Omit<Camp, "id">) {

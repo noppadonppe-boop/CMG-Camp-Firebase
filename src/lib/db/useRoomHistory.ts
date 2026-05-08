@@ -3,7 +3,7 @@ import {
   collection,
   query,
   orderBy,
-  onSnapshot,
+  getDocs,
   addDoc,
   deleteDoc,
   doc,
@@ -29,16 +29,39 @@ export function useOccupancyHistory(roomId: string) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!roomId) return;
-    const q = query(
-      collection(db, ROOT, ROOT_DOC, "rooms", roomId, "occupancyHistory"),
-      orderBy("date", "desc")
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OccupancyRecord)));
+    if (!roomId) {
       setLoading(false);
-    }, () => setLoading(false));
-    return unsub;
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function loadHistory() {
+      try {
+        const q = query(
+          collection(db, ROOT, ROOT_DOC, "rooms", roomId, "occupancyHistory"),
+          orderBy("date", "desc")
+        );
+        const snap = await getDocs(q);
+        
+        if (!isCancelled) {
+          setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OccupancyRecord)));
+          setLoading(false);
+          console.log(`📖 [Read] Occupancy history for room ${roomId}: ${snap.docs.length} records`);
+        }
+      } catch (error) {
+        console.error('Error loading occupancy history:', error);
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadHistory();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [roomId]);
 
   return { records, loading };
@@ -71,16 +94,39 @@ export function useElectricityHistory(roomId: string) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!roomId) return;
-    const q = query(
-      collection(db, ROOT, ROOT_DOC, "rooms", roomId, "electricityHistory"),
-      orderBy("date", "desc")
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ElectricityRecord)));
+    if (!roomId) {
       setLoading(false);
-    }, () => setLoading(false));
-    return unsub;
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function loadHistory() {
+      try {
+        const q = query(
+          collection(db, ROOT, ROOT_DOC, "rooms", roomId, "electricityHistory"),
+          orderBy("date", "desc")
+        );
+        const snap = await getDocs(q);
+        
+        if (!isCancelled) {
+          setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ElectricityRecord)));
+          setLoading(false);
+          console.log(`📖 [Read] Electricity history for room ${roomId}: ${snap.docs.length} records`);
+        }
+      } catch (error) {
+        console.error('Error loading electricity history:', error);
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadHistory();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [roomId]);
 
   return { records, loading };
@@ -118,16 +164,39 @@ export function useMaintenanceFeeHistory(roomId: string) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!roomId) return;
-    const q = query(
-      collection(db, ROOT, ROOT_DOC, "rooms", roomId, "maintenanceFeeHistory"),
-      orderBy("date", "desc")
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() } as MaintenanceFeeRecord)));
+    if (!roomId) {
       setLoading(false);
-    }, () => setLoading(false));
-    return unsub;
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function loadHistory() {
+      try {
+        const q = query(
+          collection(db, ROOT, ROOT_DOC, "rooms", roomId, "maintenanceFeeHistory"),
+          orderBy("date", "desc")
+        );
+        const snap = await getDocs(q);
+        
+        if (!isCancelled) {
+          setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() } as MaintenanceFeeRecord)));
+          setLoading(false);
+          console.log(`📖 [Read] Maintenance history for room ${roomId}: ${snap.docs.length} records`);
+        }
+      } catch (error) {
+        console.error('Error loading maintenance history:', error);
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadHistory();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [roomId]);
 
   return { records, loading };

@@ -17,9 +17,17 @@ interface FormState {
   firstName: string; lastName: string; gender: Gender; nationality: string; phone: string;
   subcontractor: string; jobRole: string; startDate: string;
   zoneId: string; roomId: string;
+  // Employment types
+  employmentTypes: {
+    dc: boolean;
+    subcontract: boolean;
+    supply: boolean;
+    foreign: boolean;
+  };
+  teamName: string;
 }
 
-const EMPTY: FormState = { idNumber: "", docType: "national-id", firstName: "", lastName: "", gender: "male", nationality: "ไทย", phone: "", subcontractor: "", jobRole: "", startDate: "", zoneId: "", roomId: "" };
+const EMPTY: FormState = { idNumber: "", docType: "national-id", firstName: "", lastName: "", gender: "male", nationality: "ไทย", phone: "", subcontractor: "", jobRole: "", startDate: "", zoneId: "", roomId: "", employmentTypes: { dc: false, subcontract: false, supply: false, foreign: false }, teamName: "" };
 
 function Field({ label, required, error, children }: { label: string; required?: boolean; error?: string; children: React.ReactNode }) {
   return (
@@ -85,6 +93,8 @@ function RegisterModal({ onClose, zones, rooms }: { onClose: () => void; zones: 
         nationality: form.nationality, phone: form.phone, subcontractor: form.subcontractor,
         jobRole: form.jobRole, roomId: form.roomId, zoneId: form.zoneId,
         docType: form.docType, idNumber: form.idNumber,
+        employmentTypes: form.employmentTypes,
+        teamName: form.teamName,
       });
       setStatus("done");
       setTimeout(() => onClose(), 1800);
@@ -179,12 +189,59 @@ function RegisterModal({ onClose, zones, rooms }: { onClose: () => void; zones: 
             {/* Employment */}
             <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <SectionTitle n={3} title="ข้อมูลการจ้างงาน" sub="Employment Information" />
+              
+              {/* Employment Type Checkboxes - อยู่บนสุด */}
+              <div className="mb-4">
+                <label className="mb-2 block text-sm font-medium text-gray-700">ประเภทการจ้างงาน</label>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.employmentTypes.dc}
+                      onChange={(e) => set("employmentTypes", { ...form.employmentTypes, dc: e.target.checked })}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">DC</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.employmentTypes.subcontract}
+                      onChange={(e) => set("employmentTypes", { ...form.employmentTypes, subcontract: e.target.checked })}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Subcontract</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.employmentTypes.supply}
+                      onChange={(e) => set("employmentTypes", { ...form.employmentTypes, supply: e.target.checked })}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Supply</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.employmentTypes.foreign}
+                      onChange={(e) => set("employmentTypes", { ...form.employmentTypes, foreign: e.target.checked })}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">ต่างชาติ</span>
+                  </label>
+                </div>
+              </div>
+              
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label="ผู้รับเหมา / บริษัทส่งแรงงาน" required error={errors.subcontractor}>
-                  <input value={form.subcontractor} onChange={(e) => set("subcontractor", e.target.value)} placeholder="ชื่อบริษัท/ผู้รับเหมา" className={inputCls(errors.subcontractor)} />
+                <Field label="ชื่อชุด">
+                  <input value={form.teamName} onChange={(e) => set("teamName", e.target.value)} placeholder="เช่น ชุดที่ 1, Team A" className={inputCls()} />
                 </Field>
                 <Field label="ตำแหน่งงาน" required error={errors.jobRole}>
                   <input value={form.jobRole} onChange={(e) => set("jobRole", e.target.value)} placeholder="เช่น General Worker, Foreman" className={inputCls(errors.jobRole)} />
+                </Field>
+                <Field label="ผู้รับเหมา / บริษัทส่งแรงงาน" required error={errors.subcontractor}>
+                  <input value={form.subcontractor} onChange={(e) => set("subcontractor", e.target.value)} placeholder="ชื่อบริษัท/ผู้รับเหมา" className={inputCls(errors.subcontractor)} />
                 </Field>
                 <Field label="วันเริ่มงาน">
                   <input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} className={inputCls()} />
@@ -226,6 +283,9 @@ function WorkerDetailModal({
     nationality: worker.nationality, phone: worker.phone, subcontractor: worker.subcontractor,
     jobRole: worker.jobRole, roomId: worker.roomId, zoneId: worker.zoneId,
     docType: worker.docType, idNumber: worker.idNumber,
+    employmentTypes: worker.employmentTypes || { dc: false, subcontract: false, supply: false, foreign: false },
+    teamName: worker.teamName || "",
+    startDate: (worker as any).startDate || "",
   });
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [saving, setSaving] = useState(false);
@@ -284,121 +344,281 @@ function WorkerDetailModal({
   const roomInfo = rooms.find((r) => r.id === worker.roomId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 py-8">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-2xl rounded-2xl bg-gray-50 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-              {worker.firstName.charAt(0)}
-            </div>
-            <div>
-              <p className="text-base font-bold text-gray-800">{worker.firstName} {worker.lastName}</p>
-              <p className="text-xs text-gray-400">{DOC_LABELS[worker.docType as DocType] ?? worker.docType} · {worker.idNumber}</p>
-            </div>
+        <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 rounded-t-2xl">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">
+              {mode === "view" ? "ข้อมูลแรงงาน" : mode === "edit" ? "แก้ไขข้อมูลแรงงาน" : "ยืนยันการลบ"}
+            </h2>
+            <p className="text-xs text-gray-500">
+              {mode === "view" ? "Worker Information" : mode === "edit" ? "Edit Worker" : "Confirm Delete"}
+            </p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 transition"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition">
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Body */}
-        <div className="max-h-[70vh] overflow-y-auto p-6">
+        {mode === "confirm-delete" ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-16">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+              <AlertTriangle className="h-8 w-8 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-800">ยืนยันการลบ?</h3>
+            <p className="text-sm text-gray-500 text-center px-6">
+              ข้อมูลของ <span className="font-semibold text-gray-700">{worker.firstName} {worker.lastName}</span> จะถูกลบถาวร ไม่สามารถกู้คืนได้
+            </p>
+            {saveErr && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mx-6">
+                <span className="font-semibold">ลบไม่สำเร็จ:</span> {saveErr}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-6 space-y-5">
           {mode === "view" && (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">ข้อมูลเอกสาร</p>
-                {INFO_ROW("ประเภทเอกสาร", DOC_LABELS[worker.docType as DocType] ?? worker.docType)}
-                {INFO_ROW("หมายเลขเอกสาร", worker.idNumber)}
+            <div className="space-y-5">
+              {/* Identity Section - Read Only */}
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <SectionTitle n={1} title="ข้อมูลเอกสารตัวตน" sub="Identity Documents" />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="ประเภทเอกสาร" required>
+                    <div className="relative">
+                      <select value={form.docType} disabled className="w-full appearance-none rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none cursor-not-allowed opacity-70">
+                        {(["national-id", "passport", "work-permit"] as DocType[]).map((d) => (
+                          <option key={d} value={d}>{DOC_LABELS[d]}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    </div>
+                  </Field>
+                  <Field label="หมายเลขเอกสาร" required>
+                    <input value={form.idNumber} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
+                  </Field>
+                </div>
               </div>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">ข้อมูลส่วนตัว</p>
-                {INFO_ROW("เพศ", GENDER_LABELS[worker.gender] ?? worker.gender)}
-                {INFO_ROW("สัญชาติ", worker.nationality)}
-                {INFO_ROW("เบอร์โทรศัพท์", worker.phone)}
+
+              {/* Personal Info Section - Read Only */}
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <SectionTitle n={2} title="ข้อมูลส่วนตัว" sub="Personal Information" />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="ชื่อ" required>
+                    <input value={form.firstName} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
+                  </Field>
+                  <Field label="นามสกุล" required>
+                    <input value={form.lastName} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
+                  </Field>
+                  <Field label="เพศ">
+                    <div className="relative">
+                      <select value={form.gender} disabled className="w-full appearance-none rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none cursor-not-allowed opacity-70">
+                        <option value="male">ชาย</option>
+                        <option value="female">หญิง</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    </div>
+                  </Field>
+                  <Field label="สัญชาติ" required>
+                    <input value={form.nationality} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
+                  </Field>
+                  <Field label="เบอร์โทรศัพท์">
+                    <input type="tel" value={form.phone} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
+                  </Field>
+                </div>
               </div>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">การจ้างงาน</p>
-                {INFO_ROW("ผู้รับเหมา", worker.subcontractor)}
-                {INFO_ROW("ตำแหน่ง", worker.jobRole)}
-              </div>
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">ห้องพัก</p>
-                {INFO_ROW("โซน", zoneLabel)}
-                {INFO_ROW("ห้อง", roomInfo ? `${roomInfo.number} (${roomInfo.occupied}/${roomInfo.capacity})` : undefined)}
+
+              {/* Employment Section - Read Only */}
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <SectionTitle n={3} title="ข้อมูลการจ้างงาน" sub="Employment Information" />
+                
+                {/* Employment Type Checkboxes - Read Only */}
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-medium text-gray-700">ประเภทการจ้างงาน</label>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <label className="flex items-center gap-2 cursor-not-allowed opacity-70">
+                      <input type="checkbox" checked={form.employmentTypes?.dc || false} disabled className="h-4 w-4 rounded border-gray-300 text-blue-600" />
+                      <span className="text-sm text-gray-700">DC</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-not-allowed opacity-70">
+                      <input type="checkbox" checked={form.employmentTypes?.subcontract || false} disabled className="h-4 w-4 rounded border-gray-300 text-blue-600" />
+                      <span className="text-sm text-gray-700">Subcontract</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-not-allowed opacity-70">
+                      <input type="checkbox" checked={form.employmentTypes?.supply || false} disabled className="h-4 w-4 rounded border-gray-300 text-blue-600" />
+                      <span className="text-sm text-gray-700">Supply</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-not-allowed opacity-70">
+                      <input type="checkbox" checked={form.employmentTypes?.foreign || false} disabled className="h-4 w-4 rounded border-gray-300 text-blue-600" />
+                      <span className="text-sm text-gray-700">ต่างชาติ</span>
+                    </label>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="ชื่อชุด">
+                    <input value={form.teamName || ""} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
+                  </Field>
+                  <Field label="ตำแหน่งงาน" required>
+                    <input value={form.jobRole} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
+                  </Field>
+                  <Field label="ผู้รับเหมา / บริษัทส่งแรงงาน" required>
+                    <input value={form.subcontractor} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
+                  </Field>
+                  <Field label="วันเริ่มงาน">
+                    <input type="date" value={form.startDate || ""} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
+                  </Field>
+                </div>
               </div>
             </div>
           )}
 
           {mode === "edit" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="ชื่อ" required error={errors.firstName}>
-                  <input value={form.firstName} onChange={(e) => setF("firstName", e.target.value)} className={inputCls(errors.firstName)} />
-                </Field>
-                <Field label="นามสกุล" required error={errors.lastName}>
-                  <input value={form.lastName} onChange={(e) => setF("lastName", e.target.value)} className={inputCls(errors.lastName)} />
-                </Field>
-                <Field label="เพศ">
-                  <div className="relative">
-                    <select value={form.gender} onChange={(e) => setF("gender", e.target.value)} className={selectCls()}>
-                      <option value="male">ชาย</option>
-                      <option value="female">หญิง</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  </div>
-                </Field>
-                <Field label="สัญชาติ" required error={errors.nationality}>
-                  <input value={form.nationality} onChange={(e) => setF("nationality", e.target.value)} className={inputCls(errors.nationality)} />
-                </Field>
-                <Field label="เบอร์โทรศัพท์">
-                  <input type="tel" value={form.phone} onChange={(e) => setF("phone", e.target.value)} className={inputCls()} />
-                </Field>
-                <Field label="ประเภทเอกสาร">
-                  <div className="relative">
-                    <select value={form.docType} onChange={(e) => setF("docType", e.target.value)} className={selectCls()}>
-                      {(["national-id", "passport", "work-permit"] as DocType[]).map((d) => <option key={d} value={d}>{DOC_LABELS[d]}</option>)}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  </div>
-                </Field>
-                <Field label="หมายเลขเอกสาร" required error={errors.idNumber}>
-                  <input value={form.idNumber} onChange={(e) => setF("idNumber", e.target.value)} className={inputCls(errors.idNumber)} />
-                </Field>
-                <Field label="ผู้รับเหมา" required error={errors.subcontractor}>
-                  <input value={form.subcontractor} onChange={(e) => setF("subcontractor", e.target.value)} className={inputCls(errors.subcontractor)} />
-                </Field>
-                <Field label="ตำแหน่งงาน" required error={errors.jobRole}>
-                  <input value={form.jobRole} onChange={(e) => setF("jobRole", e.target.value)} className={inputCls(errors.jobRole)} />
-                </Field>
+            <div className="space-y-5">
+              {/* Identity Section - Editable */}
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <SectionTitle n={1} title="ข้อมูลเอกสารตัวตน" sub="Identity Documents" />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="ประเภทเอกสาร" required>
+                    <div className="relative">
+                      <select value={form.docType} onChange={(e) => setF("docType", e.target.value)} className={selectCls()}>
+                        {(["national-id", "passport", "work-permit"] as DocType[]).map((d) => (
+                          <option key={d} value={d}>{DOC_LABELS[d]}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    </div>
+                  </Field>
+                  <Field label="หมายเลขเอกสาร" required error={errors.idNumber}>
+                    <input value={form.idNumber} onChange={(e) => setF("idNumber", e.target.value)} placeholder="เลขบัตร / หนังสือเดินทาง / ใบอนุญาต" className={inputCls(errors.idNumber)} />
+                  </Field>
+                </div>
               </div>
-              {saveErr && <p className="text-xs text-red-500">{saveErr}</p>}
-            </div>
-          )}
 
-          {mode === "confirm-delete" && (
-            <div className="flex flex-col items-center gap-4 py-4 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
-                <AlertTriangle className="h-7 w-7 text-red-600" />
+              {/* Personal Info Section - Editable */}
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <SectionTitle n={2} title="ข้อมูลส่วนตัว" sub="Personal Information" />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="ชื่อ" required error={errors.firstName}>
+                    <input value={form.firstName} onChange={(e) => setF("firstName", e.target.value)} placeholder="ชื่อ" className={inputCls(errors.firstName)} />
+                  </Field>
+                  <Field label="นามสกุล" required error={errors.lastName}>
+                    <input value={form.lastName} onChange={(e) => setF("lastName", e.target.value)} placeholder="นามสกุล" className={inputCls(errors.lastName)} />
+                  </Field>
+                  <Field label="เพศ">
+                    <div className="relative">
+                      <select value={form.gender} onChange={(e) => setF("gender", e.target.value)} className={selectCls()}>
+                        <option value="male">ชาย</option>
+                        <option value="female">หญิง</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    </div>
+                  </Field>
+                  <Field label="สัญชาติ" required error={errors.nationality}>
+                    <input value={form.nationality} onChange={(e) => setF("nationality", e.target.value)} placeholder="เช่น ไทย, เมียนมา, กัมพูชา" className={inputCls(errors.nationality)} />
+                  </Field>
+                  <Field label="เบอร์โทรศัพท์">
+                    <input type="tel" value={form.phone} onChange={(e) => setF("phone", e.target.value)} placeholder="e.g. 081-234-5678" className={inputCls()} />
+                  </Field>
+                </div>
               </div>
-              <div>
-                <p className="text-base font-bold text-gray-800">ยืนยันการลบ?</p>
-                <p className="mt-1 text-sm text-gray-500">ข้อมูลของ <span className="font-semibold text-gray-700">{worker.firstName} {worker.lastName}</span> จะถูกลบถาวร ไม่สามารถกู้คืนได้</p>
+
+              {/* Employment Section - Editable */}
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <SectionTitle n={3} title="ข้อมูลการจ้างงาน" sub="Employment Information" />
+                
+                {/* Employment Type Checkboxes - Editable */}
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm font-medium text-gray-700">ประเภทการจ้างงาน</label>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.employmentTypes?.dc || false}
+                        onChange={(e) => setF("employmentTypes", { ...(form.employmentTypes || {}), dc: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">DC</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.employmentTypes?.subcontract || false}
+                        onChange={(e) => setF("employmentTypes", { ...(form.employmentTypes || {}), subcontract: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">Subcontract</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.employmentTypes?.supply || false}
+                        onChange={(e) => setF("employmentTypes", { ...(form.employmentTypes || {}), supply: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">Supply</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.employmentTypes?.foreign || false}
+                        onChange={(e) => setF("employmentTypes", { ...(form.employmentTypes || {}), foreign: e.target.checked })}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">ต่างชาติ</span>
+                    </label>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="ชื่อชุด">
+                    <input value={form.teamName || ""} onChange={(e) => setF("teamName", e.target.value)} placeholder="เช่น ชุดที่ 1, Team A" className={inputCls()} />
+                  </Field>
+                  <Field label="ตำแหน่งงาน" required error={errors.jobRole}>
+                    <input value={form.jobRole} onChange={(e) => setF("jobRole", e.target.value)} placeholder="เช่น General Worker, Foreman" className={inputCls(errors.jobRole)} />
+                  </Field>
+                  <Field label="ผู้รับเหมา / บริษัทส่งแรงงาน" required error={errors.subcontractor}>
+                    <input value={form.subcontractor} onChange={(e) => setF("subcontractor", e.target.value)} placeholder="ชื่อบริษัท/ผู้รับเหมา" className={inputCls(errors.subcontractor)} />
+                  </Field>
+                  <Field label="วันเริ่มงาน">
+                    <input type="date" value={form.startDate || ""} onChange={(e) => setF("startDate", e.target.value)} className={inputCls()} />
+                  </Field>
+                </div>
               </div>
-              {saveErr && <p className="text-xs text-red-500">{saveErr}</p>}
+
+              {saveErr && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <span className="font-semibold">บันทึกไม่สำเร็จ:</span> {saveErr || "เกิดข้อผิดพลาด กรุณาลองใหม่"}
+                </div>
+              )}
             </div>
           )}
-        </div>
+          </div>
+        )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-gray-100 px-6 py-4">
+        <div className="flex items-center justify-between border-t border-gray-200 bg-white px-6 py-4 rounded-b-2xl">
           {mode === "view" && (
             <>
-              <button onClick={() => setMode("confirm-delete")} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition">
+              <button 
+                onClick={() => setMode("confirm-delete")} 
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition"
+              >
                 <Trash2 className="h-4 w-4" />ลบ
               </button>
               <div className="flex gap-2">
-                <button onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition">ปิด</button>
-                <button onClick={() => setMode("edit")} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition">
+                <button 
+                  onClick={onClose} 
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+                >
+                  ปิด
+                </button>
+                <button 
+                  onClick={() => setMode("edit")} 
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition"
+                >
                   <Pencil className="h-3.5 w-3.5" />แก้ไข
                 </button>
               </div>
@@ -406,16 +626,34 @@ function WorkerDetailModal({
           )}
           {mode === "edit" && (
             <>
-              <button onClick={() => { setMode("view"); setSaveErr(""); }} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition">ยกเลิก</button>
-              <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition disabled:opacity-60">
+              <button 
+                onClick={() => { setMode("view"); setSaveErr(""); }} 
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+              >
+                ยกเลิก
+              </button>
+              <button 
+                onClick={handleSave} 
+                disabled={saving} 
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition disabled:opacity-60"
+              >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}บันทึก
               </button>
             </>
           )}
           {mode === "confirm-delete" && (
             <>
-              <button onClick={() => setMode("view")} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition">ยกเลิก</button>
-              <button onClick={handleDelete} disabled={deleting} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 transition disabled:opacity-60">
+              <button 
+                onClick={() => setMode("view")} 
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+              >
+                ยกเลิก
+              </button>
+              <button 
+                onClick={handleDelete} 
+                disabled={deleting} 
+                className="flex items-center gap-1.5 rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 transition disabled:opacity-60"
+              >
                 {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}ลบถาวร
               </button>
             </>

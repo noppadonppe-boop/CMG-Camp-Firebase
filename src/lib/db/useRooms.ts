@@ -4,6 +4,7 @@ import {
   query,
   orderBy,
   onSnapshot,
+  getDocs,
   addDoc,
   doc,
   updateDoc,
@@ -35,24 +36,43 @@ const ROOT_DOC = "root";
 export function useZones() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = () => setRefreshKey(prev => prev + 1);
 
   useEffect(() => {
-    const q = query(
-      collection(db, ROOT, ROOT_DOC, "zones"),
-      orderBy("order")
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setZones(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Zone)));
-        setLoading(false);
-      },
-      () => setLoading(false)
-    );
-    return unsub;
-  }, []);
+    let isCancelled = false;
 
-  return { zones, loading };
+    async function loadZones() {
+      setLoading(true);
+      try {
+        const q = query(
+          collection(db, ROOT, ROOT_DOC, "zones"),
+          orderBy("order")
+        );
+        const snap = await getDocs(q);
+        
+        if (!isCancelled) {
+          setZones(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Zone)));
+          setLoading(false);
+          console.log(`📖 [Read] Zones: ${snap.docs.length} records`);
+        }
+      } catch (error) {
+        console.error('Error loading zones:', error);
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadZones();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [refreshKey]);
+
+  return { zones, loading, refresh };
 }
 
 export function useRooms() {
