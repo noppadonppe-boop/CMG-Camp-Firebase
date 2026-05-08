@@ -95,6 +95,7 @@ function RegisterModal({ onClose, zones, rooms }: { onClose: () => void; zones: 
         docType: form.docType, idNumber: form.idNumber,
         employmentTypes: form.employmentTypes,
         teamName: form.teamName,
+        startDate: form.startDate,
       });
       setStatus("done");
       setTimeout(() => onClose(), 1800);
@@ -190,7 +191,7 @@ function RegisterModal({ onClose, zones, rooms }: { onClose: () => void; zones: 
             <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <SectionTitle n={3} title="ข้อมูลการจ้างงาน" sub="Employment Information" />
               
-              {/* Employment Type Checkboxes - อยู่บนสุด */}
+              {/* 1. ประเภทการจ้างงาน - Employment Type Checkboxes */}
               <div className="mb-4">
                 <label className="mb-2 block text-sm font-medium text-gray-700">ประเภทการจ้างงาน</label>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -234,15 +235,22 @@ function RegisterModal({ onClose, zones, rooms }: { onClose: () => void; zones: 
               </div>
               
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* 2. ชื่อชุด */}
                 <Field label="ชื่อชุด">
                   <input value={form.teamName} onChange={(e) => set("teamName", e.target.value)} placeholder="เช่น ชุดที่ 1, Team A" className={inputCls()} />
                 </Field>
+                
+                {/* 3. ตำแหน่งงาน */}
                 <Field label="ตำแหน่งงาน" required error={errors.jobRole}>
                   <input value={form.jobRole} onChange={(e) => set("jobRole", e.target.value)} placeholder="เช่น General Worker, Foreman" className={inputCls(errors.jobRole)} />
                 </Field>
+                
+                {/* 4. ผู้รับเหมา / บริษัทส่งแรงงาน */}
                 <Field label="ผู้รับเหมา / บริษัทส่งแรงงาน" required error={errors.subcontractor}>
                   <input value={form.subcontractor} onChange={(e) => set("subcontractor", e.target.value)} placeholder="ชื่อบริษัท/ผู้รับเหมา" className={inputCls(errors.subcontractor)} />
                 </Field>
+                
+                {/* 5. วันเริ่มงาน */}
                 <Field label="วันเริ่มงาน">
                   <input type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} className={inputCls()} />
                 </Field>
@@ -285,7 +293,7 @@ function WorkerDetailModal({
     docType: worker.docType, idNumber: worker.idNumber,
     employmentTypes: worker.employmentTypes || { dc: false, subcontract: false, supply: false, foreign: false },
     teamName: worker.teamName || "",
-    startDate: (worker as any).startDate || "",
+    startDate: worker.startDate || "",
   });
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [saving, setSaving] = useState(false);
@@ -434,7 +442,7 @@ function WorkerDetailModal({
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <SectionTitle n={3} title="ข้อมูลการจ้างงาน" sub="Employment Information" />
                 
-                {/* Employment Type Checkboxes - Read Only */}
+                {/* 1. ประเภทการจ้างงาน - Employment Type Checkboxes - Read Only */}
                 <div className="mb-4">
                   <label className="mb-2 block text-sm font-medium text-gray-700">ประเภทการจ้างงาน</label>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -458,15 +466,22 @@ function WorkerDetailModal({
                 </div>
                 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {/* 2. ชื่อชุด */}
                   <Field label="ชื่อชุด">
                     <input value={form.teamName || ""} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
                   </Field>
+                  
+                  {/* 3. ตำแหน่งงาน */}
                   <Field label="ตำแหน่งงาน" required>
                     <input value={form.jobRole} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
                   </Field>
+                  
+                  {/* 4. ผู้รับเหมา / บริษัทส่งแรงงาน */}
                   <Field label="ผู้รับเหมา / บริษัทส่งแรงงาน" required>
                     <input value={form.subcontractor} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
                   </Field>
+                  
+                  {/* 5. วันเริ่มงาน */}
                   <Field label="วันเริ่มงาน">
                     <input type="date" value={form.startDate || ""} disabled className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm outline-none cursor-not-allowed opacity-70" />
                   </Field>
@@ -529,7 +544,7 @@ function WorkerDetailModal({
               <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <SectionTitle n={3} title="ข้อมูลการจ้างงาน" sub="Employment Information" />
                 
-                {/* Employment Type Checkboxes - Editable */}
+                {/* 1. ประเภทการจ้างงาน - Employment Type Checkboxes - Editable */}
                 <div className="mb-4">
                   <label className="mb-2 block text-sm font-medium text-gray-700">ประเภทการจ้างงาน</label>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -573,15 +588,22 @@ function WorkerDetailModal({
                 </div>
                 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {/* 2. ชื่อชุด */}
                   <Field label="ชื่อชุด">
                     <input value={form.teamName || ""} onChange={(e) => setF("teamName", e.target.value)} placeholder="เช่น ชุดที่ 1, Team A" className={inputCls()} />
                   </Field>
+                  
+                  {/* 3. ตำแหน่งงาน */}
                   <Field label="ตำแหน่งงาน" required error={errors.jobRole}>
                     <input value={form.jobRole} onChange={(e) => setF("jobRole", e.target.value)} placeholder="เช่น General Worker, Foreman" className={inputCls(errors.jobRole)} />
                   </Field>
+                  
+                  {/* 4. ผู้รับเหมา / บริษัทส่งแรงงาน */}
                   <Field label="ผู้รับเหมา / บริษัทส่งแรงงาน" required error={errors.subcontractor}>
                     <input value={form.subcontractor} onChange={(e) => setF("subcontractor", e.target.value)} placeholder="ชื่อบริษัท/ผู้รับเหมา" className={inputCls(errors.subcontractor)} />
                   </Field>
+                  
+                  {/* 5. วันเริ่มงาน */}
                   <Field label="วันเริ่มงาน">
                     <input type="date" value={form.startDate || ""} onChange={(e) => setF("startDate", e.target.value)} className={inputCls()} />
                   </Field>

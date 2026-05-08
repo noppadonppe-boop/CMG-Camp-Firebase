@@ -33,6 +33,8 @@ export interface Worker {
   };
   // Team/Set name
   teamName?: string;
+  // Start date
+  startDate?: string;
 }
 
 const ROOT = "cmg-camp-manager";
