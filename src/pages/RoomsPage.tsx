@@ -177,21 +177,33 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
   const [maintNote, setMaintNote] = useState("");
   const [maintSaving, setMaintSaving] = useState(false);
   const [showMaintForm, setShowMaintForm] = useState(false);
-  const { records: occRecords } = useOccupancyHistory(room.id);
-  const { records: elecRecords } = useElectricityHistory(room.id);
-  const { records: maintRecords } = useMaintenanceFeeHistory(room.id);
+  const { records: occRecords, reload: reloadOccupancyHistory } = useOccupancyHistory(room.id);
+  const { records: elecRecords, reload: reloadElectricityHistory } = useElectricityHistory(room.id);
+  const { records: maintRecords, reload: reloadMaintenanceHistory } = useMaintenanceFeeHistory(room.id);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const fmtMonth = (m: string) => { const [y, mo] = m.split("-"); return new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" }); };
 
   async function handleRemoveResident(w: Worker) {
     if (!window.confirm(`นำ ${w.firstName} ออกจากห้อง ${room.number}?`)) return;
-    try { await updateWorker(w.id, { roomId: "", zoneId: "" }); await addOccupancyRecord(room.id, { workerName: `${w.firstName} ${w.lastName}`, action: "checkout" }); }
+    try {
+      await updateWorker(w.id, { roomId: "", zoneId: "" });
+      await addOccupancyRecord(room.id, { workerName: `${w.firstName} ${w.lastName}`, action: "checkout" });
+      reloadOccupancyHistory();
+    }
     catch { alert("นำออกไม่สำเร็จ"); }
   }
   async function handleAddResident2() {
     if (!selectedWorkerId) return;
     const w = workers.find(x => x.id === selectedWorkerId);
-    try { await updateWorker(selectedWorkerId, { roomId: room.id, zoneId: room.zoneId }); if (w) await addOccupancyRecord(room.id, { workerName: `${w.firstName} ${w.lastName}`, action: "checkin" }); setSelectedWorkerId(""); setIsAdding(false); }
+    try {
+      await updateWorker(selectedWorkerId, { roomId: room.id, zoneId: room.zoneId });
+      if (w) {
+        await addOccupancyRecord(room.id, { workerName: `${w.firstName} ${w.lastName}`, action: "checkin" });
+        reloadOccupancyHistory();
+      }
+      setSelectedWorkerId("");
+      setIsAdding(false);
+    }
     catch { alert("เพิ่มผู้พักไม่สำเร็จ"); }
   }
   async function handleSaveElectricity() {
@@ -225,6 +237,7 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
         month: currentMonth, 
         note: elecNote 
       }); 
+      reloadElectricityHistory();
       setMeterVal(""); 
       setElecNote(""); 
       setShowElecForm(false); 
@@ -247,6 +260,7 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
       console.log('💾 Saving maintenance fee:', { roomId: room.id, roomNumber: room.number, data });
       await addMaintenanceFeeRecord(room.id, data); 
       console.log('✅ Maintenance fee saved successfully');
+      reloadMaintenanceHistory();
       setMaintNote(""); 
       setShowMaintForm(false); 
     }
@@ -262,6 +276,7 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
     try { 
       console.log('Deleting electricity record:', { roomId: room.id, recordId });
       await deleteElectricityRecord(room.id, recordId); 
+      reloadElectricityHistory();
       console.log('Delete successful');
     }
     catch (error) { 
@@ -275,6 +290,7 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
     try { 
       console.log('Deleting maintenance record:', { roomId: room.id, recordId });
       await deleteMaintenanceFeeRecord(room.id, recordId); 
+      reloadMaintenanceHistory();
       console.log('Delete successful');
     }
     catch (error) { 
@@ -608,7 +624,13 @@ export default function RoomsPage() {
     try {
       if (room.occupied > 0) {
         const residents = workers.filter((w) => w.roomId === room.id);
-        await Promise.all(residents.map((w) => updateWorker(w.id, { roomId: "", zoneId: "" })));
+        await Promise.all(residents.map(async (w) => {
+          await updateWorker(w.id, { roomId: "", zoneId: "" });
+          await addOccupancyRecord(room.id, {
+            workerName: `${w.firstName} ${w.lastName}`,
+            action: "checkout",
+          });
+        }));
       }
       await deleteRoom(room.id);
     } catch (err) {

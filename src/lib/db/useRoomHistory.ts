@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   collection,
   query,
@@ -27,9 +27,15 @@ export interface OccupancyRecord {
 export function useOccupancyHistory(roomId: string) {
   const [records, setRecords] = useState<OccupancyRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const reload = useCallback(() => {
+    setRefreshKey((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
     if (!roomId) {
+      setRecords([]);
       setLoading(false);
       return;
     }
@@ -62,9 +68,9 @@ export function useOccupancyHistory(roomId: string) {
     return () => {
       isCancelled = true;
     };
-  }, [roomId]);
+  }, [roomId, refreshKey]);
 
-  return { records, loading };
+  return { records, loading, reload };
 }
 
 export async function addOccupancyRecord(
@@ -92,9 +98,15 @@ export interface ElectricityRecord {
 export function useElectricityHistory(roomId: string) {
   const [records, setRecords] = useState<ElectricityRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const reload = useCallback(() => {
+    setRefreshKey((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
     if (!roomId) {
+      setRecords([]);
       setLoading(false);
       return;
     }
@@ -127,9 +139,9 @@ export function useElectricityHistory(roomId: string) {
     return () => {
       isCancelled = true;
     };
-  }, [roomId]);
+  }, [roomId, refreshKey]);
 
-  return { records, loading };
+  return { records, loading, reload };
 }
 
 export async function addElectricityRecord(
@@ -162,9 +174,15 @@ export interface MaintenanceFeeRecord {
 export function useMaintenanceFeeHistory(roomId: string) {
   const [records, setRecords] = useState<MaintenanceFeeRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const reload = useCallback(() => {
+    setRefreshKey((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
     if (!roomId) {
+      setRecords([]);
       setLoading(false);
       return;
     }
@@ -197,9 +215,9 @@ export function useMaintenanceFeeHistory(roomId: string) {
     return () => {
       isCancelled = true;
     };
-  }, [roomId]);
+  }, [roomId, refreshKey]);
 
-  return { records, loading };
+  return { records, loading, reload };
 }
 
 export async function addMaintenanceFeeRecord(
