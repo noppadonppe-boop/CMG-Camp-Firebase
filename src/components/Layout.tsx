@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import Navbar from "./Navbar";
 import AppSidebar from "./Sidebar";
+import AnnouncementPopup from "./AnnouncementPopup";
 
 export default function Layout() {
   return (
@@ -8,10 +9,11 @@ export default function Layout() {
       <AppSidebar />
       <div className="flex flex-1 flex-col">
         <Navbar />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-6 relative">
           <Outlet />
         </main>
       </div>
+      <AnnouncementPopup />
     </div>
   );
 }

@@ -12,7 +12,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-export type RoomStatus = "empty" | "partial" | "full" | "maintenance";
+export type RoomStatus = "empty" | "partial" | "full" | "maintenance" | "storage";
 
 export interface Room {
   id: string;

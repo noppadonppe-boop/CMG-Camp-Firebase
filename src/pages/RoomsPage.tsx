@@ -1,5 +1,5 @@
 ﻿import { useState } from "react";
-import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar } from "lucide-react";
+import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package } from "lucide-react";
 import {
   useRooms,
   useZones,
@@ -30,10 +30,12 @@ const STATUS_CONFIG: Record<RoomStatus, { label: string; cardBg: string; cardBor
   partial:     { label: "มีผู้อยู่", cardBg: "bg-yellow-50",  cardBorder: "border-yellow-200",  cardHover: "hover:bg-yellow-100 hover:border-yellow-400 hover:shadow-yellow-100",   badgeBg: "bg-yellow-100",  badgeText: "text-yellow-700",  textColor: "text-yellow-700",  dotColor: "bg-yellow-400",  icon: Users },
   full:        { label: "เต็ม",      cardBg: "bg-red-50",     cardBorder: "border-red-200",     cardHover: "hover:bg-red-100 hover:border-red-400 hover:shadow-red-100",           badgeBg: "bg-red-100",     badgeText: "text-red-700",     textColor: "text-red-700",     dotColor: "bg-red-500",     icon: Users },
   maintenance: { label: "ซ่อมบำรุง",  cardBg: "bg-gray-100",   cardBorder: "border-gray-300",    cardHover: "hover:bg-gray-200 hover:border-gray-400 hover:shadow-gray-200",         badgeBg: "bg-gray-200",    badgeText: "text-gray-600",    textColor: "text-gray-500",    dotColor: "bg-gray-400",    icon: Wrench },
+  storage:     { label: "เก็บของ",    cardBg: "bg-indigo-50",  cardBorder: "border-indigo-200",  cardHover: "hover:bg-indigo-100 hover:border-indigo-400 hover:shadow-indigo-100",   badgeBg: "bg-indigo-100",  badgeText: "text-indigo-700",  textColor: "text-indigo-700",  dotColor: "bg-indigo-500",  icon: Package },
 };
 
 function getComputedStatus(room: Room, residentsCount: number): RoomStatus {
   if (room.status === "maintenance") return "maintenance";
+  if (room.status === "storage") return "storage";
   if (residentsCount === 0) return "empty";
   if (residentsCount >= room.capacity) return "full";
   return "partial";
@@ -45,7 +47,8 @@ const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "empty",       label: "ว่าง" },
   { value: "partial",     label: "มีผู้อยู่บางส่วน" },
   { value: "full",        label: "เต็ม" },
-  { value: "maintenance", label: "ซ่อมบำรุ" },
+  { value: "maintenance", label: "ซ่อมบำรุง" },
+  { value: "storage",     label: "เก็บของ" },
 ];
 
 function RoomCard({ room, workers, onClick, canEdit, onEdit, onDelete }: { room: Room; workers: Worker[]; onClick: () => void; canEdit?: boolean; onEdit?: () => void; onDelete?: () => void }) {
@@ -83,7 +86,7 @@ function RoomCard({ room, workers, onClick, canEdit, onEdit, onDelete }: { room:
           <div className="flex items-center gap-1.5 opacity-90">
             <Users className={`h-3.5 w-3.5 ${cfg.textColor}`} />
             <span className={`text-[10px] font-bold tabular-nums tracking-wide ${cfg.textColor}`}>
-              {room.status === "maintenance" ? "ปิดซ่อมบำรุง" : `${residents.length} / ${room.capacity} คน`}
+              {room.status === "maintenance" ? "ปิดซ่อมบำรุง" : room.status === "storage" ? "ห้องเก็บของ" : `${residents.length} / ${room.capacity} คน`}
             </span>
          </div>
       </div>
@@ -91,6 +94,8 @@ function RoomCard({ room, workers, onClick, canEdit, onEdit, onDelete }: { room:
       {/* Residents names – compact */}
       <div className="mt-1 flex w-full flex-wrap gap-0.5">
         {room.status === "maintenance" ? (
+          <span className="text-[8px] text-gray-500/70 italic">-</span>
+        ) : room.status === "storage" ? (
           <span className="text-[8px] text-gray-500/70 italic">-</span>
         ) : displayResidents.length > 0 ? (
           displayResidents.map((r, i) => (
@@ -117,7 +122,7 @@ function AddRoomModal({ zones, defaultZoneId, onClose }: { zones: Zone[]; defaul
     const cap = parseInt(capacity, 10);
     if (!cap || cap < 1) { setError("กรุณาระบุจำนวนคนที่ถูกต้อง"); return; }
     setSaving(true);
-    try { await addRoom({ number: number.trim().toUpperCase(), zoneId, occupied: 0, capacity: status === "maintenance" ? 0 : cap, status }); onClose(); }
+    try { await addRoom({ number: number.trim().toUpperCase(), zoneId, occupied: 0, capacity: status === "maintenance" || status === "storage" ? 0 : cap, status }); onClose(); }
     catch (e) { setError(e instanceof Error ? e.message : "เพิ่มไม่สำเร็จ"); setSaving(false); }
   }
   return (
@@ -133,11 +138,11 @@ function AddRoomModal({ zones, defaultZoneId, onClose }: { zones: Zone[]; defaul
             <div className="relative"><select value={zoneId} onChange={(e) => { setZoneId(e.target.value); setError(""); }} className="w-full appearance-none rounded-xl border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm outline-none focus:ring-2 focus:ring-blue-500 hover:border-gray-400"><option value="">-- เลือกโซน --</option>{zones.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /></div>
           </div>
           <div><label className="mb-1 block text-xs font-semibold text-gray-600">หมายเลขห้อง <span className="text-red-500">*</span></label><input value={number} onChange={(e) => { setNumber(e.target.value); setError(""); }} placeholder="เช่น D-401" className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400" /></div>
-          <div><label className="mb-1 block text-xs font-semibold text-gray-600">ความจุ (คน) <span className="text-red-500">*</span></label><input type="number" min={1} max={20} value={capacity} onChange={(e) => { setCapacity(e.target.value); setError(""); }} disabled={status === "maintenance"} className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400 disabled:bg-gray-50 disabled:text-gray-400" /></div>
+          <div><label className="mb-1 block text-xs font-semibold text-gray-600">ความจุ (คน) <span className="text-red-500">*</span></label><input type="number" min={1} max={20} value={capacity} onChange={(e) => { setCapacity(e.target.value); setError(""); }} disabled={status === "maintenance" || status === "storage"} className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400 disabled:bg-gray-50 disabled:text-gray-400" /></div>
           <div><label className="mb-1 block text-xs font-semibold text-gray-600">สถานะเริ่มต้น</label>
             <div className="flex gap-2">
-              {([{ value: "empty" as RoomStatus, label: "ว่าง" }, { value: "maintenance" as RoomStatus, label: "ซ่อมบำรุง" }]).map((opt) => (
-                <button key={opt.value} type="button" onClick={() => { setStatus(opt.value); setError(""); }} className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold transition ${status === opt.value ? (opt.value === "maintenance" ? "border-gray-400 bg-gray-100 text-gray-700" : "border-emerald-400 bg-emerald-50 text-emerald-700") : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>{opt.label}</button>
+              {([{ value: "empty" as RoomStatus, label: "ว่าง" }, { value: "maintenance" as RoomStatus, label: "ซ่อมบำรุง" }, { value: "storage" as RoomStatus, label: "เก็บของ" }]).map((opt) => (
+                <button key={opt.value} type="button" onClick={() => { setStatus(opt.value); setError(""); }} className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold transition ${status === opt.value ? (opt.value === "maintenance" ? "border-gray-400 bg-gray-100 text-gray-700" : opt.value === "storage" ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-emerald-400 bg-emerald-50 text-emerald-700") : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>{opt.label}</button>
               ))}
             </div>
           </div>
@@ -160,7 +165,89 @@ function fmt(ts: import("firebase/firestore").Timestamp | null) {
   return ts.toDate().toLocaleDateString("th-TH", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
-function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }: { room: Room; workers: Worker[]; onClose: () => void; canEdit?: boolean; onEditRoom?: () => void; onDeleteRoom?: () => void }) {
+function QuickEditWorkerModal({ worker, onClose }: { worker: Worker; onClose: () => void }) {
+  const [form, setForm] = useState({
+    firstName: worker.firstName || "",
+    lastName: worker.lastName || "",
+    gender: worker.gender || "male",
+    nationality: worker.nationality || "ไทย",
+    jobRole: worker.jobRole || "",
+    subcontractor: worker.subcontractor || "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await updateWorker(worker.id, form);
+      onClose();
+    } catch (e) {
+      alert("แก้ไขข้อมูลไม่สำเร็จ");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-gray-100">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <User className="h-5 w-5 text-blue-600" />
+            <h3 className="text-base font-bold text-gray-800">แก้ไขข้อมูลผู้พัก</h3>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
+        </div>
+        
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-gray-600">ชื่อ</label>
+              <input value={form.firstName} onChange={(e) => setForm(p => ({...p, firstName: e.target.value}))} className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-gray-600">นามสกุล</label>
+              <input value={form.lastName} onChange={(e) => setForm(p => ({...p, lastName: e.target.value}))} className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-gray-600">เพศ</label>
+              <select value={form.gender} onChange={(e) => setForm(p => ({...p, gender: e.target.value}))} className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400 bg-white">
+                <option value="male">ชาย</option>
+                <option value="female">หญิง</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-gray-600">สัญชาติ</label>
+              <input value={form.nationality} onChange={(e) => setForm(p => ({...p, nationality: e.target.value}))} className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400" />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold text-gray-600">บริษัท / ผู้รับเหมา</label>
+            <input value={form.subcontractor} onChange={(e) => setForm(p => ({...p, subcontractor: e.target.value}))} className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400" />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[10px] font-semibold text-gray-600">ตำแหน่ง / หน้าที่</label>
+            <input value={form.jobRole} onChange={(e) => setForm(p => ({...p, jobRole: e.target.value}))} className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400" />
+          </div>
+        </div>
+
+        <div className="mt-5 flex gap-3">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-gray-200 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition cursor-pointer">ยกเลิก</button>
+          <button onClick={handleSave} disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-95 transition cursor-pointer disabled:opacity-60">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />} บันทึก
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoomSidePanel({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }: { room: Room; workers: Worker[]; onClose: () => void; canEdit?: boolean; onEditRoom?: () => void; onDeleteRoom?: () => void }) {
   const { userProfile } = useAuth();
   const isMasterAdmin = userProfile?.roles?.includes("MasterAdmin");
   const residents = workers.filter((w) => w.roomId === room.id);
@@ -177,6 +264,7 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
   const [maintNote, setMaintNote] = useState("");
   const [maintSaving, setMaintSaving] = useState(false);
   const [showMaintForm, setShowMaintForm] = useState(false);
+  const [editingWorker, setEditingWorker] = useState<Worker | null>(null);
   const { records: occRecords, reload: reloadOccupancyHistory } = useOccupancyHistory(room.id);
   const { records: elecRecords, reload: reloadElectricityHistory } = useElectricityHistory(room.id);
   const { records: maintRecords, reload: reloadMaintenanceHistory } = useMaintenanceFeeHistory(room.id);
@@ -212,13 +300,11 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
     
     setElecSaving(true);
     try { 
-      // ตรวจสอบว่ามีบันทึกก่อนหน้าหรือไม่
       const isFirstRecord = elecRecords.length === 0;
       let totalCost = 0;
       let usedUnits = 0;
       
       if (!isFirstRecord) {
-        // ครั้งที่ 2 เป็นต้นไป: คำนวนจากผลต่าง
         const previousReading = elecRecords[0].meterReading;
         if (currentReading <= previousReading) {
           alert(`ค่ามิเตอร์ปัจจุบันต้องมากกว่าค่ามิเตอร์ครั้งก่อน (${previousReading} หน่วย)`);
@@ -228,7 +314,6 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
         usedUnits = currentReading - previousReading;
         totalCost = usedUnits * 8;
       }
-      // ครั้งแรก: ไม่คำนวนเงิน (totalCost = 0, usedUnits = 0)
       
       await addElectricityRecord(room.id, { 
         meterReading: currentReading, 
@@ -257,15 +342,12 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
         totalCost: total, 
         note: maintNote 
       };
-      console.log('💾 Saving maintenance fee:', { roomId: room.id, roomNumber: room.number, data });
       await addMaintenanceFeeRecord(room.id, data); 
-      console.log('✅ Maintenance fee saved successfully');
       reloadMaintenanceHistory();
       setMaintNote(""); 
       setShowMaintForm(false); 
     }
     catch (error) { 
-      console.error('❌ Failed to save maintenance fee:', error);
       alert("บันทึกไม่สำเร็จ"); 
     }
     setMaintSaving(false);
@@ -274,13 +356,10 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
   async function handleDeleteElectricity(recordId: string, month: string) {
     if (!window.confirm(`ต้องการลบบันทึกค่าไฟฟ้า ${fmtMonth(month)} หรือไม่?`)) return;
     try { 
-      console.log('Deleting electricity record:', { roomId: room.id, recordId });
       await deleteElectricityRecord(room.id, recordId); 
       reloadElectricityHistory();
-      console.log('Delete successful');
     }
     catch (error) { 
-      console.error('Delete error:', error);
       alert(`ลบไม่สำเร็จ: ${error instanceof Error ? error.message : 'Unknown error'}`); 
     }
   }
@@ -288,21 +367,17 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
   async function handleDeleteMaintenance(recordId: string, month: string) {
     if (!window.confirm(`ต้องการลบบันทึกค่าบำรุงรักษา ${fmtMonth(month)} หรือไม่?`)) return;
     try { 
-      console.log('Deleting maintenance record:', { roomId: room.id, recordId });
       await deleteMaintenanceFeeRecord(room.id, recordId); 
       reloadMaintenanceHistory();
-      console.log('Delete successful');
     }
     catch (error) { 
-      console.error('Delete error:', error);
       alert(`ลบไม่สำเร็จ: ${error instanceof Error ? error.message : 'Unknown error'}`); 
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl max-h-[92vh] flex flex-col overflow-hidden">
+    <>
+      <div className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[400px] bg-white shadow-2xl flex flex-col border-l border-gray-200 transform transition-transform duration-300 translate-x-0`}>
         {/* Header */}
         <div className="shrink-0 bg-gradient-to-r from-slate-800 to-slate-700 px-6 py-5">
           <div className="flex items-center justify-between">
@@ -315,12 +390,14 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
                   <h3 className="text-xl font-bold text-white">{room.number}</h3>
                   <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${cfg.badgeBg} ${cfg.badgeText}`}><span className={`h-1.5 w-1.5 rounded-full ${cfg.dotColor}`} />{cfg.label}</span>
                 </div>
-                <p className="text-sm text-white/60 mt-0.5">{room.status === "maintenance" ? "ปิดซ่อมบำรุง" : `${residents.length} / ${room.capacity} คน`}</p>
+                <p className="text-sm text-white/60 mt-0.5">{room.status === "maintenance" ? "ปิดซ่อมบำรุง" : room.status === "storage" ? "ห้องเก็บของ" : `${residents.length} / ${room.capacity} คน`}</p>
               </div>
             </div>
             <div className="flex items-center gap-1.5">
               {canEdit && (<><button onClick={() => { onClose(); onEditRoom?.(); }} className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white/80 hover:bg-white/20 transition cursor-pointer"><Pencil className="h-3.5 w-3.5" /></button><button onClick={() => { onClose(); onDeleteRoom?.(); }} className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 transition cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button></>)}
-              <button onClick={onClose} className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white/70 hover:bg-white/20 transition cursor-pointer"><X className="h-4 w-4" /></button>
+              <button onClick={onClose} className="ml-2 flex items-center justify-center gap-1 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 hover:bg-white/20 transition cursor-pointer">
+                พับแผง <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
           </div>
           {room.status !== "maintenance" && room.capacity > 0 && (
@@ -333,7 +410,6 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
 
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
-
           {/* Section: ผู้พัก */}
           {room.status !== "maintenance" && room.capacity > 0 && (
             <section>
@@ -352,11 +428,26 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
                 </div>
               )}
               {residents.length > 0 ? (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2">
                   {residents.map((w, i) => (
                     <div key={w.id} className="group flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 hover:bg-white hover:border-gray-200 hover:shadow-sm transition">
-                      <div className="flex items-center gap-2.5 min-w-0"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] font-bold text-white shadow-sm">{i+1}</div><div className="min-w-0"><p className="truncate text-sm font-bold text-gray-800">{w.firstName} {w.lastName}</p><p className="truncate text-[10px] text-gray-400">{w.jobRole} · {w.subcontractor}</p></div></div>
-                      {canEdit && (<button onClick={() => handleRemoveResident(w)} className="opacity-0 group-hover:opacity-100 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-300 hover:bg-red-50 hover:text-red-500 transition cursor-pointer"><Trash2 className="h-3.5 w-3.5" /></button>)}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] font-bold text-white shadow-sm">{i+1}</div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-gray-800">{w.firstName} {w.lastName}</p>
+                          <p className="truncate text-[10px] text-gray-400">{w.jobRole} · {w.subcontractor}</p>
+                        </div>
+                      </div>
+                      {canEdit && (
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center shrink-0">
+                          <button onClick={() => setEditingWorker(w)} className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition cursor-pointer" title="แก้ไขข้อมูล">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => handleRemoveResident(w)} className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500 transition cursor-pointer" title="นำออก">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -507,7 +598,10 @@ function RoomModal({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }
           </section>
         </div>
       </div>
-    </div>
+      {editingWorker && (
+        <QuickEditWorkerModal worker={editingWorker} onClose={() => setEditingWorker(null)} />
+      )}
+    </>
   );
 }
 
@@ -532,7 +626,7 @@ function EditRoomModal({ room, zones, workers, onClose }: { room: Room; zones: Z
       await updateRoom(room.id, { 
         number: number.trim().toUpperCase(), 
         zoneId, 
-        capacity: status === "maintenance" ? 0 : cap, 
+        capacity: status === "maintenance" || status === "storage" ? 0 : cap, 
         status 
       }); 
       onClose(); 
@@ -554,11 +648,11 @@ function EditRoomModal({ room, zones, workers, onClose }: { room: Room; zones: Z
             <div className="relative"><select value={zoneId} onChange={(e) => { setZoneId(e.target.value); setError(""); }} className="w-full appearance-none rounded-xl border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm outline-none focus:ring-2 focus:ring-blue-500 hover:border-gray-400"><option value="">-- เลือกโซน --</option>{zones.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /></div>
           </div>
           <div><label className="mb-1 block text-xs font-semibold text-gray-600">หมายเลขห้อง <span className="text-red-500">*</span></label><input value={number} onChange={(e) => { setNumber(e.target.value); setError(""); }} placeholder="เช่น D-401" className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400" /></div>
-          <div><label className="mb-1 block text-xs font-semibold text-gray-600">ความจุ (คน) <span className="text-red-500">*</span></label><input type="number" min={occupiedCount > 0 ? occupiedCount : 1} max={20} value={capacity} onChange={(e) => { setCapacity(e.target.value); setError(""); }} disabled={status === "maintenance"} className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400 disabled:bg-gray-50 disabled:text-gray-400" /></div>
+          <div><label className="mb-1 block text-xs font-semibold text-gray-600">ความจุ (คน) <span className="text-red-500">*</span></label><input type="number" min={occupiedCount > 0 ? occupiedCount : 1} max={20} value={capacity} onChange={(e) => { setCapacity(e.target.value); setError(""); }} disabled={status === "maintenance" || status === "storage"} className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400 disabled:bg-gray-50 disabled:text-gray-400" /></div>
           <div><label className="mb-1 block text-xs font-semibold text-gray-600">สถานะ</label>
             <div className="flex gap-2">
-              {([{ value: "empty" as RoomStatus, label: "เปิดใช้งาน" }, { value: "maintenance" as RoomStatus, label: "ซ่อมบำรุง" }]).map((opt) => (
-                <button key={opt.value} type="button" disabled={occupiedCount > 0 && opt.value === "maintenance"} onClick={() => { setStatus(opt.value); setError(""); }} className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold transition ${status === opt.value ? (opt.value === "maintenance" ? "border-gray-400 bg-gray-100 text-gray-700" : "border-emerald-400 bg-emerald-50 text-emerald-700") : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"}`}>{opt.label}</button>
+              {([{ value: "empty" as RoomStatus, label: "เปิดใช้งาน" }, { value: "maintenance" as RoomStatus, label: "ซ่อมบำรุง" }, { value: "storage" as RoomStatus, label: "เก็บของ" }]).map((opt) => (
+                <button key={opt.value} type="button" disabled={occupiedCount > 0 && (opt.value === "maintenance" || opt.value === "storage")} onClick={() => { setStatus(opt.value); setError(""); }} className={`flex-1 rounded-xl border-2 py-2 text-xs font-semibold transition ${status === opt.value ? (opt.value === "maintenance" ? "border-gray-400 bg-gray-100 text-gray-700" : opt.value === "storage" ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-emerald-400 bg-emerald-50 text-emerald-700") : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"}`}>{opt.label}</button>
               ))}
             </div>
           </div>
@@ -569,6 +663,272 @@ function EditRoomModal({ room, zones, workers, onClose }: { room: Room; zones: Z
           <button onClick={handleSubmit} disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-95 transition disabled:opacity-60">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />} บันทึก
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomSiteMap({ rooms, workers, onRoomClick }: { rooms: (Room & { computedStatus: RoomStatus })[]; workers: Worker[]; onRoomClick: (r: Room) => void }) {
+  // Helper to render a specific room button by its exact number (e.g. "A-5/10")
+  const renderRoom = (roomNumber: string) => {
+    // Normalize to ignore spaces, dashes, and leading zeros (e.g. "B - 9/01", "B9/1", "B-9/1" all become "B9/1")
+    const normalize = (s: string) => s.replace(/[^A-Z0-9/]/gi, '').toUpperCase().replace(/\/0+(\d+)/, '/$1');
+    const targetNorm = normalize(roomNumber);
+    const room = rooms.find(r => normalize(r.number) === targetNorm);
+
+    if (!room) {
+      // If room doesn't exist in current filter/db, render an empty placeholder slot
+      return (
+        <div key={roomNumber} className="relative w-16 sm:w-20 md:w-24 h-auto min-h-[2rem] md:min-h-[2.5rem] p-0.5 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 bg-gray-50 rounded-md opacity-50">
+          <span className="text-[8px] font-bold text-gray-400 leading-none">{roomNumber}</span>
+        </div>
+      );
+    }
+
+    const residents = workers.filter(w => w.roomId === room.id);
+    const cfg = STATUS_CONFIG[room.computedStatus];
+    
+    const getWorkerLabel = (w: Worker) => {
+      const sub = (w.subcontractor || "").toUpperCase();
+      const isCMG = sub.includes("CMG") || sub === "DC" || w.employmentTypes?.dc;
+      if (isCMG) {
+         const isThai = /[ก-๛]/.test(w.firstName) || (w.nationality && w.nationality.includes("ไทย")) || (w.nationality && w.nationality.toLowerCase().includes("thai"));
+         return isThai ? "DC TH" : "DC FR";
+      }
+      return "SUB";
+    };
+
+    const groupedResidents = residents.reduce((acc, r) => {
+      const label = getWorkerLabel(r);
+      if (!acc[label]) acc[label] = [];
+      acc[label].push(r.gender);
+      return acc;
+    }, {} as Record<string, string[]>);
+
+    return (
+      <button 
+        key={room.id}
+        onClick={() => onRoomClick(room)}
+        className={`relative w-16 sm:w-20 md:w-24 h-auto min-h-[2rem] md:min-h-[2.5rem] p-0.5 flex flex-col items-center justify-start border-2 shadow-sm rounded-md transition-all hover:scale-105 hover:z-20 cursor-pointer ${cfg.cardBg} ${cfg.cardBorder}`}
+      >
+        <span className={`text-[8px] font-bold ${cfg.textColor} leading-none mb-0.5`}>{room.number}</span>
+        <div className="flex flex-col items-center justify-center gap-0.5 w-full">
+           {residents.length === 0 && room.computedStatus !== "maintenance" && room.computedStatus !== "storage" && (
+             <span className="text-[7px] font-medium text-black/30 my-px">ว่าง</span>
+           )}
+           {room.computedStatus === "maintenance" && (
+             <Wrench className="w-2.5 h-2.5 text-gray-400 my-px" />
+           )}
+           {room.computedStatus === "storage" && (
+             <Package className="w-2.5 h-2.5 text-indigo-400 my-px" />
+           )}
+           {Object.entries(groupedResidents).map(([label, genders], i) => (
+             <div key={i} className="flex items-center justify-center gap-0.5 w-full text-[7px] font-bold text-gray-700 leading-none bg-white/40 rounded-sm px-0.5 py-px">
+               <span className="shrink-0 whitespace-nowrap">{label}</span>
+               <div className="flex flex-wrap items-center justify-center gap-px">
+                 {genders.map((g, j) => g === "female" ? (
+                   <Venus key={j} className="w-2 h-2 text-pink-500 shrink-0" />
+                 ) : (
+                   <Mars key={j} className="w-2 h-2 text-blue-500 shrink-0" />
+                 ))}
+               </div>
+             </div>
+           ))}
+        </div>
+      </button>
+    );
+  };
+
+  // Helper arrays for descending room numbers
+  const blockA5_A4 = [10,9,8,7,6,5,4,3,2,1];
+  const blockA7 = [8,7,6,5,4,3,2,1];
+  const blockA6 = [10,9,8,7,6,5,4,3,2,1];
+  const blockA3_A2 = [10,9,8,7,6,5,4,3,2,1];
+
+  const blockB9_detached_left = [31,32,33,34,35,36,37,38,39,40]; // Left column goes down
+  const blockB9_detached_right = [30,29,28,27,26,25,24,23,22,21]; // Right column goes down
+  const blockB9_main_left = [11,12,13,14,15,16,17,18,19,20];
+  const blockB9_main_right = [10,9,8,7,6,5,4,3,2,1];
+  const blockB8_main_left = [11,12,13,14,15,16,17,18,19,20];
+  const blockB8_main_right = [10,9,8,7,6,5,4,3,2,1];
+
+  return (
+    <div className="flex flex-col gap-4 md:gap-6 overflow-x-auto pb-8 items-center bg-gray-100/50 p-2 sm:p-4 rounded-xl border border-gray-200">
+      
+      {/* ─── LEGEND ─── */}
+      <div className="w-full max-w-4xl bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-gray-700">
+          <Info className="w-4 h-4 text-blue-500 shrink-0" />
+          <span className="font-bold">สัญลักษณ์บนผัง:</span>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">DC TH</span> = <span className="text-gray-600">CMG (คนไทย)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">DC FR</span> = <span className="text-gray-600">CMG (ต่างชาติ)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">SUB</span> = <span className="text-gray-600">ผู้รับเหมา</span>
+          </div>
+          <div className="w-px h-4 bg-gray-300 hidden sm:block"></div>
+          <div className="flex items-center gap-1.5">
+            <Mars className="w-3.5 h-3.5 text-blue-500" /> = <span className="text-gray-600">ชาย</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Venus className="w-3.5 h-3.5 text-pink-500" /> = <span className="text-gray-600">หญิง</span>
+          </div>
+          <div className="w-px h-4 bg-gray-300 hidden sm:block"></div>
+          <div className="flex items-center gap-1.5">
+            <Package className="w-3.5 h-3.5 text-indigo-500" /> = <span className="text-gray-600">ห้องเก็บของ</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Wrench className="w-3.5 h-3.5 text-gray-500" /> = <span className="text-gray-600">ซ่อมบำรุง</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── BLOCK A LAYOUT ─── */}
+      <div className="w-full max-w-4xl">
+        <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-blue-500" /> BLOCK A
+        </h3>
+        <div className="flex flex-col xl:flex-row gap-3 md:gap-4 items-start justify-center xl:justify-start">
+          <div className="flex w-fit bg-[#5d5d5d] p-2 sm:p-3 md:p-4 rounded-md shadow-md border border-[#4a4a4a] gap-2 sm:gap-3 md:gap-4 relative justify-between">
+          <div className="absolute top-10 -left-2 flex flex-col items-center justify-center gap-1 hidden sm:flex">
+            <div className="w-4 h-4 border border-red-500 rounded-sm bg-transparent flex items-center justify-center opacity-70">
+              <div className="w-full h-px bg-red-500 absolute left-0" />
+            </div>
+          </div>
+
+          {/* Left side (A5, A4, A7, A6) */}
+          <div className="flex flex-col w-full">
+            {/* Top: Bath & Toilet */}
+            <div className="bg-cyan-400/80 h-10 flex items-center justify-center mb-3 text-[8px] md:text-[9px] font-bold text-cyan-900 tracking-widest rounded-sm shadow-sm">BATH & TOILET</div>
+            
+            {/* A5 & A4 */}
+            <div className="flex gap-1 justify-around">
+               <div className="flex flex-col gap-0.5 items-center w-full">
+                 <div className="text-center text-[9px] md:text-[10px] font-bold text-gray-300 mb-0.5">A5</div>
+                 {blockA5_A4.map(n => renderRoom(`A-5/${n.toString().padStart(2, '0')}`))}
+               </div>
+               <div className="flex flex-col gap-0.5 items-center w-full">
+                 <div className="text-center text-[9px] md:text-[10px] font-bold text-gray-300 mb-0.5">A4</div>
+                 {blockA5_A4.map(n => renderRoom(`A-4/${n.toString().padStart(2, '0')}`))}
+               </div>
+            </div>
+
+            {/* A7 & A6 */}
+            <div className="flex gap-1 mt-4 justify-around">
+               <div className="flex flex-col gap-0.5 items-center w-full">
+                 <div className="text-center text-[9px] md:text-[10px] font-bold text-gray-300 mb-0.5">A7</div>
+                 {blockA7.map(n => renderRoom(`A-7/${n.toString().padStart(2, '0')}`))}
+               </div>
+               <div className="flex flex-col gap-0.5 items-center w-full">
+                 <div className="text-center text-[9px] md:text-[10px] font-bold text-gray-300 mb-0.5">A6</div>
+                 {blockA6.map(n => renderRoom(`A-6/${n.toString().padStart(2, '0')}`))}
+               </div>
+            </div>
+          </div>
+
+          {/* Corridor */}
+          <div className="w-6 sm:w-10 md:w-12 bg-[#737373] shrink-0 border-x border-[#838383] flex flex-col justify-end relative">
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex items-center justify-center hidden sm:flex">
+              <div className="w-4 h-4 border border-red-500 rounded-sm bg-transparent flex items-center justify-center opacity-70">
+                <div className="w-px h-full bg-red-500 absolute top-0" />
+              </div>
+            </div>
+          </div>
+
+          {/* Right side (A3, A2) */}
+          <div className="flex flex-col w-full">
+            {/* Top: Future Phase */}
+            <div className="bg-[#cccccc] h-10 flex items-center justify-center mb-3 text-[8px] font-bold text-gray-500 tracking-widest rounded-sm shadow-sm">FUTURE PHASE</div>
+            
+            {/* A3 & A2 */}
+            <div className="flex gap-1 justify-around">
+               <div className="flex flex-col gap-0.5 items-center w-full">
+                 <div className="text-center text-[9px] md:text-[10px] font-bold text-gray-300 mb-0.5">A3</div>
+                 {blockA3_A2.map(n => renderRoom(`A-3/${n.toString().padStart(2, '0')}`))}
+               </div>
+               <div className="flex flex-col gap-0.5 items-center w-full">
+                 <div className="text-center text-[9px] md:text-[10px] font-bold text-gray-300 mb-0.5">A2</div>
+                 {blockA3_A2.map(n => renderRoom(`A-2/${n.toString().padStart(2, '0')}`))}
+               </div>
+            </div>
+          </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="w-full h-px bg-gray-300 max-w-4xl my-2" />
+
+      {/* ─── BLOCK B LAYOUT ─── */}
+      <div className="w-full max-w-4xl">
+        <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-indigo-500" /> BLOCK B
+        </h3>
+        <div className="flex flex-col xl:flex-row gap-3 md:gap-4 items-start justify-center xl:justify-start">
+          {/* Detached Left */}
+          <div className="flex bg-[#5d5d5d] p-1.5 sm:p-2 rounded-md shadow-md border border-[#4a4a4a]">
+            <div className="flex gap-1">
+              <div className="flex flex-col gap-0.5">
+                {blockB9_detached_left.map(n => renderRoom(`B-9/${n}`))}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {blockB9_detached_right.map(n => renderRoom(`B-9/${n}`))}
+              </div>
+            </div>
+          </div>
+
+          {/* Main Block B */}
+          <div className="flex w-fit bg-[#5d5d5d] p-2 sm:p-3 md:p-4 rounded-md shadow-md border border-[#4a4a4a] gap-2 sm:gap-3 md:gap-4 relative justify-between">
+            <div className="absolute -top-2 left-1/2 -translate-x-1/2 flex items-center justify-center hidden sm:flex">
+               <div className="w-4 h-4 border border-red-500 rounded-sm bg-transparent flex items-center justify-center opacity-70">
+                 <div className="w-px h-full bg-red-500 absolute top-0" />
+               </div>
+            </div>
+
+            {/* Left (B9) */}
+            <div className="flex flex-col w-full">
+              <div className="text-center bg-[#8c8c8c] text-[9px] md:text-[10px] font-bold text-gray-900 py-1 mb-1.5 rounded-sm shadow-sm">B9 - FLOOR 1</div>
+              <div className="flex gap-1 justify-around">
+                <div className="flex flex-col gap-0.5 items-center w-full">
+                  {blockB9_main_left.map(n => renderRoom(`B-9/${n.toString().padStart(2, '0')}`))}
+                </div>
+                <div className="flex flex-col gap-0.5 items-center w-full">
+                  {blockB9_main_right.map(n => renderRoom(`B-9/${n.toString().padStart(2, '0')}`))}
+                </div>
+              </div>
+              <div className="bg-[#cccccc] h-10 md:h-12 mt-3 flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest rounded-sm shadow-sm">FUTURE PHASE</div>
+              <div className="bg-[#cccccc] h-20 md:h-24 mt-3 flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest rounded-sm shadow-sm">FUTURE PHASE</div>
+            </div>
+
+          {/* Corridor */}
+          <div className="w-6 sm:w-10 md:w-12 bg-[#737373] shrink-0 border-x border-[#838383] flex flex-col justify-end relative">
+            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex items-center justify-center hidden sm:flex">
+              <div className="w-4 h-4 border border-red-500 rounded-sm bg-transparent flex items-center justify-center opacity-70">
+                <div className="w-px h-full bg-red-500 absolute top-0" />
+              </div>
+            </div>
+          </div>
+
+            {/* Right (B8) */}
+            <div className="flex flex-col w-full">
+              <div className="text-center bg-[#8c8c8c] text-[9px] md:text-[10px] font-bold text-gray-900 py-1 mb-1.5 rounded-sm shadow-sm">B8 - FLOOR 1</div>
+              <div className="flex gap-1 justify-around">
+                <div className="flex flex-col gap-0.5 items-center w-full">
+                  {blockB8_main_left.map(n => renderRoom(`B-8/${n.toString().padStart(2, '0')}`))}
+                </div>
+                <div className="flex flex-col gap-0.5 items-center w-full">
+                  {blockB8_main_right.map(n => renderRoom(`B-8/${n.toString().padStart(2, '0')}`))}
+                </div>
+              </div>
+              <div className="bg-cyan-400/80 h-10 md:h-12 mt-3 flex items-center justify-center text-[7px] md:text-[8px] text-cyan-900 font-bold tracking-widest rounded-sm shadow-sm">BATH&TOILET</div>
+              <div className="bg-[#cccccc] h-20 md:h-24 mt-3 flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest rounded-sm shadow-sm">FUTURE PHASE</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -589,6 +949,7 @@ export default function RoomsPage() {
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [roomToEdit, setRoomToEdit] = useState<Room | null>(null);
   const [showAddRoom, setShowAddRoom] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
   
   const loading = zonesLoading || roomsLoading || campsLoading;
   
@@ -607,7 +968,8 @@ export default function RoomsPage() {
     empty: enrichedRooms.filter((r) => r.computedStatus === "empty").length, 
     partial: enrichedRooms.filter((r) => r.computedStatus === "partial").length, 
     full: enrichedRooms.filter((r) => r.computedStatus === "full").length, 
-    maintenance: enrichedRooms.filter((r) => r.computedStatus === "maintenance").length 
+    maintenance: enrichedRooms.filter((r) => r.computedStatus === "maintenance").length,
+    storage: enrichedRooms.filter((r) => r.computedStatus === "storage").length 
   };
 
   const handleDeleteRoom = async (room: Room) => {
@@ -638,64 +1000,91 @@ export default function RoomsPage() {
     }
   };
 
-  return (
-    <div>
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">แผนห้องพัก <span className="text-lg font-normal text-gray-400">Room Allocation</span></h1>
-          <p className="mt-1 text-sm text-gray-500">ภาพรวมการใช้ห้องพักแบ่งตามแคมป์และโซน</p>
+    return (
+    <>
+      <div className={`transition-all duration-300 ${activeRoom ? "xl:pr-[400px]" : ""}`}>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">แผนห้องพัก <span className="text-lg font-normal text-gray-400">Room Allocation</span></h1>
+            <p className="mt-1 text-sm text-gray-500">ภาพรวมการใช้ห้องพักแบ่งตามแคมป์และโซน</p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <div className="flex rounded-lg bg-gray-100 p-1 border border-gray-200">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                  viewMode === "grid" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                <Grid className="h-4 w-4" /> แบบการ์ด
+              </button>
+              <button
+                onClick={() => setViewMode("map")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                  viewMode === "map" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                <Map className="h-4 w-4" /> แบบผังห้อง
+              </button>
+            </div>
+            <button onClick={() => setShowAddRoom(true)} className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-95">
+              <Plus className="h-4 w-4" /> เพิ่มห้องพัก
+            </button>
+          </div>
         </div>
-        <div className="flex shrink-0 gap-2">
-          <button onClick={() => setShowAddRoom(true)} className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-95">
-            <Plus className="h-4 w-4" /> เพิ่มห้องพัก
-          </button>
+        
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+            <div className="relative w-full sm:w-56">
+              <select value={selectedCampId} onChange={(e) => { setSelectedCampId(e.target.value); setSelectedZoneId("all"); }} className="w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm font-semibold text-blue-800 shadow-sm outline-none transition hover:border-blue-300 focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                <option value="all">ทุกแคมป์ (All Camps)</option>
+                {camps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            </div>
+            
+            <div className="relative w-full sm:w-48">
+              <select value={selectedZoneId} onChange={(e) => setSelectedZoneId(e.target.value)} className="w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm text-gray-800 shadow-sm outline-none transition hover:border-gray-400 focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed" disabled={availableZones.length === 0}>
+                <option value="all">ทุกโซนในแคมป์</option>
+                {availableZones.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {FILTER_OPTIONS.map(({ value, label }) => (
+              <button key={value} onClick={() => setStatusFilter(value)} className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${statusFilter === value ? "bg-blue-600 text-white shadow-sm" : "bg-white border border-gray-200 text-gray-600 hover:border-gray-400 hover:text-gray-800"}`}>
+                {label}{value !== "all" && <span className={`ml-1.5 tabular-nums ${statusFilter === value ? "text-blue-200" : "text-gray-400"}`}>{counts[value as RoomStatus]}</span>}
+              </button>
+            ))}
+          </div>
         </div>
+        
+        {viewMode === "grid" && (
+          <div className="mb-4 flex flex-wrap items-center gap-4">
+            {(["empty", "partial", "full", "maintenance", "storage"] as RoomStatus[]).map((s) => (
+              <span key={s} className="flex items-center gap-1.5 text-xs text-gray-500"><span className={`h-3 w-3 rounded-sm ${STATUS_CONFIG[s].dotColor}`} />{STATUS_CONFIG[s].label}<span className="tabular-nums text-gray-400">({counts[s]})</span></span>
+            ))}
+            <span className="ml-auto text-xs text-gray-400">แสดง <span className="font-semibold text-gray-600">{filteredRooms.length}</span> ห้อง</span>
+          </div>
+        )}
+        
+        {loading ? (
+          <div className="flex min-h-48 flex-col items-center justify-center gap-2"><Loader2 className="h-8 w-8 animate-spin text-blue-400" /><p className="text-sm text-gray-400">โหลดข้อมูล...</p></div>
+        ) : filteredRooms.length === 0 ? (
+          <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white text-center"><Users className="h-8 w-8 text-gray-300" /><p className="mt-2 text-sm text-gray-400">ไม่พบห้องที่ตรงกับตัวกรองที่เลือก</p></div>
+        ) : viewMode === "grid" ? (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+            {filteredRooms.map((room) => <RoomCard key={room.id} workers={workers} room={room} onClick={() => setActiveRoom(room)} canEdit={canEditRoom} onEdit={() => setRoomToEdit(room)} onDelete={() => handleDeleteRoom(room)} />)}
+          </div>
+        ) : (
+          <CustomSiteMap rooms={filteredRooms} workers={workers} onRoomClick={(room) => setActiveRoom(room)} />
+        )}
       </div>
       
-      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-          <div className="relative w-full sm:w-56">
-            <select value={selectedCampId} onChange={(e) => { setSelectedCampId(e.target.value); setSelectedZoneId("all"); }} className="w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm font-semibold text-blue-800 shadow-sm outline-none transition hover:border-blue-300 focus:ring-2 focus:ring-blue-500 cursor-pointer">
-              <option value="all">ทุกแคมป์ (All Camps)</option>
-              {camps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          </div>
-          
-          <div className="relative w-full sm:w-48">
-            <select value={selectedZoneId} onChange={(e) => setSelectedZoneId(e.target.value)} className="w-full appearance-none rounded-lg border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm text-gray-800 shadow-sm outline-none transition hover:border-gray-400 focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed" disabled={availableZones.length === 0}>
-              <option value="all">ทุกโซนในแคมป์</option>
-              {availableZones.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {FILTER_OPTIONS.map(({ value, label }) => (
-            <button key={value} onClick={() => setStatusFilter(value)} className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${statusFilter === value ? "bg-blue-600 text-white shadow-sm" : "bg-white border border-gray-200 text-gray-600 hover:border-gray-400 hover:text-gray-800"}`}>
-              {label}{value !== "all" && <span className={`ml-1.5 tabular-nums ${statusFilter === value ? "text-blue-200" : "text-gray-400"}`}>{counts[value as RoomStatus]}</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="mb-4 flex flex-wrap items-center gap-4">
-        {(["empty", "partial", "full", "maintenance"] as RoomStatus[]).map((s) => (
-          <span key={s} className="flex items-center gap-1.5 text-xs text-gray-500"><span className={`h-3 w-3 rounded-sm ${STATUS_CONFIG[s].dotColor}`} />{STATUS_CONFIG[s].label}<span className="tabular-nums text-gray-400">({counts[s]})</span></span>
-        ))}
-        <span className="ml-auto text-xs text-gray-400">แสดง <span className="font-semibold text-gray-600">{filteredRooms.length}</span> ห้อง</span>
-      </div>
-      {loading ? (
-        <div className="flex min-h-48 flex-col items-center justify-center gap-2"><Loader2 className="h-8 w-8 animate-spin text-blue-400" /><p className="text-sm text-gray-400">โหลดข้อมูล...</p></div>
-      ) : filteredRooms.length === 0 ? (
-        <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white text-center"><Users className="h-8 w-8 text-gray-300" /><p className="mt-2 text-sm text-gray-400">ไม่พบห้องที่ตรงกับตัวกรองที่เลือก</p></div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
-          {filteredRooms.map((room) => <RoomCard key={room.id} workers={workers} room={room} onClick={() => setActiveRoom(room)} canEdit={canEditRoom} onEdit={() => setRoomToEdit(room)} onDelete={() => handleDeleteRoom(room)} />)}
-        </div>
-      )}
-      {activeRoom && <RoomModal room={activeRoom} workers={workers} onClose={() => setActiveRoom(null)} canEdit={canEditRoom} onEditRoom={() => setRoomToEdit(activeRoom)} onDeleteRoom={() => handleDeleteRoom(activeRoom)} />}
+      {activeRoom && <RoomSidePanel room={activeRoom} workers={workers} onClose={() => setActiveRoom(null)} canEdit={canEditRoom} onEditRoom={() => setRoomToEdit(activeRoom)} onDeleteRoom={() => handleDeleteRoom(activeRoom)} />}
       {roomToEdit && <EditRoomModal room={roomToEdit} zones={availableZones} workers={workers} onClose={() => setRoomToEdit(null)} />}
       {showAddRoom && <AddRoomModal zones={availableZones} defaultZoneId={selectedZoneId} onClose={() => setShowAddRoom(false)} />}
-    </div>
+    </>
   );
 }

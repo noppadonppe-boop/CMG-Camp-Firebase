@@ -20,6 +20,7 @@ import BillingMeterReadingsPage from "@/pages/BillingMeterReadingsPage";
 import BillingInvoicesPage from "@/pages/BillingInvoicesPage";
 import ManualPage from "@/pages/ManualPage";
 import UserManagementPage from "@/pages/UserManagementPage";
+import AnnouncementsAdminPage from "@/pages/admin/AnnouncementsAdminPage";
 
 export default function App() {
   return (
@@ -143,6 +144,14 @@ export default function App() {
                 element={
                   <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "HrManager", "CampBoss", "Manager"]}>
                     <UserManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/announcements"
+                element={
+                  <ProtectedRoute requireRoles={["MasterAdmin", "MD", "GM", "CampBoss", "Manager"]}>
+                    <AnnouncementsAdminPage />
                   </ProtectedRoute>
                 }
               />
