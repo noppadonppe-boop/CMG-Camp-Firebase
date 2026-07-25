@@ -692,10 +692,47 @@ function CustomSiteMap({ rooms, workers, onRoomClick }: { rooms: (Room & { compu
     
     const getWorkerLabel = (w: Worker) => {
       const sub = (w.subcontractor || "").toUpperCase();
+      const role = (w.jobRole || "").toLowerCase();
+      const subcontractorText = (w.subcontractor || "").toLowerCase();
+
+      // ตรวจสอบว่าเป็นผู้อาศัยร่วม/ครอบครัวพนักงานหรือไม่
+      const isFamily = 
+        role.includes("ครอบครัว") || role.includes("ผู้ติดตาม") || role.includes("ผู้อาศัย") || 
+        role.includes("ร่วมอาศัย") || role.includes("ญาติ") || role.includes("บุตร") || role.includes("ภรรยา") || role.includes("สามี") ||
+        role.includes("family") || role.includes("dependent") || role.includes("resident") || 
+        role.includes("follower") || role.includes("spouse") || role.includes("child") ||
+        subcontractorText.includes("ครอบครัว") || subcontractorText.includes("ผู้ติดตาม") || subcontractorText.includes("ผู้อาศัย") || 
+        subcontractorText.includes("ร่วมอาศัย") || subcontractorText.includes("ญาติ") || subcontractorText.includes("family") || 
+        subcontractorText.includes("dependent") || subcontractorText.includes("resident") || subcontractorText.includes("follower");
+
       const isCMG = sub.includes("CMG") || sub === "DC" || w.employmentTypes?.dc;
+
+      // หากเป็นผู้อาศัยร่วม/ครอบครัวพนักงาน
+      if (isFamily) {
+        // หากผู้อาศัยคนนั้นอยู่ร่วมกับ บ. CMG ก็จะเป็น FM แต่หากอยู่ร่วมกับผู้รับเหมาก็จะเป็น SUB
+        return isCMG ? "FM" : "SUB";
+      }
+
       if (isCMG) {
-         const isThai = /[ก-๛]/.test(w.firstName) || (w.nationality && w.nationality.includes("ไทย")) || (w.nationality && w.nationality.toLowerCase().includes("thai"));
-         return isThai ? "DC TH" : "DC FR";
+         // 1. ตรวจสอบสัญชาติเป็นหลักก่อน (ถ้าระบุไว้ และไม่เป็นค่า -)
+         const nationality = (w.nationality || "").trim();
+         if (nationality !== "" && nationality !== "-") {
+           const nat = nationality.toLowerCase();
+           const isThaiNationality = nat.includes("ไทย") || nat.includes("thai");
+           return isThaiNationality ? "DC TH" : "DC FR";
+         }
+
+         // 2. ถ้าไม่มีข้อมูลสัญชาติ หรือใส่ค่า - ให้ตรวจสอบจากตัวอักษรของชื่อ
+         const hasThai = /[ก-๛]/.test(w.firstName);
+         const hasEnglish = /[A-Za-z]/.test(w.firstName);
+         
+         // ถ้าชื่อเป็นภาษาอังกฤษ (มีอักษรภาษาอังกฤษและไม่มีอักษรไทย) จะถูกจัดเป็น DC FR ทันที
+         if (hasEnglish && !hasThai) {
+           return "DC FR";
+         }
+
+         // นอกเหนือจากนั้น ให้เป็น DC TH
+         return "DC TH";
       }
       return "SUB";
     };
@@ -771,7 +808,10 @@ function CustomSiteMap({ rooms, workers, onRoomClick }: { rooms: (Room & { compu
             <span className="font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">DC FR</span> = <span className="text-gray-600">CMG (ต่างชาติ)</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">SUB</span> = <span className="text-gray-600">ผู้รับเหมา</span>
+            <span className="font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">FM</span> = <span className="text-gray-600">ครอบครัว/ผู้อาศัยร่วม (CMG)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">SUB</span> = <span className="text-gray-600">ผู้รับเหมา/ผู้ร่วมอาศัยผู้รับเหมา</span>
           </div>
           <div className="w-px h-4 bg-gray-300 hidden sm:block"></div>
           <div className="flex items-center gap-1.5">
