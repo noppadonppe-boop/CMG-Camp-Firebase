@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
-import { Users, BedDouble, Bell, TrendingUp, ArrowUpRight, ArrowDownLeft, X, Search, Building2, Home, Sparkles, UserCheck } from "lucide-react";
+import { Users, BedDouble, Bell, TrendingUp, ArrowUpRight, ArrowDownLeft, X, Search, Building2, Home, Sparkles, UserCheck, Mars, Venus, Info } from "lucide-react";
 import { useCamp } from "@/context/CampContext";
 import { useDashboard } from "@/lib/db/useDashboard";
 import { useRooms, useZones } from "@/lib/db/useRooms";
-import { useWorkers } from "@/lib/db/useWorkers";
+import { useWorkers, type Worker } from "@/lib/db/useWorkers";
 
 function getComputedStatus(room: { status: string; capacity: number }, residentsCount: number) {
   if (room.status === "maintenance") return "maintenance";
@@ -11,6 +11,53 @@ function getComputedStatus(room: { status: string; capacity: number }, residents
   if (residentsCount === 0) return "empty";
   if (residentsCount >= room.capacity) return "full";
   return "partial";
+}
+
+function getWorkerLabel(w: Worker) {
+  const sub = (w.subcontractor || "").toUpperCase();
+  const role = (w.jobRole || "").toLowerCase();
+  const subcontractorText = (w.subcontractor || "").toLowerCase();
+
+  // ตรวจสอบว่าเป็นผู้อาศัยร่วม/ครอบครัวพนักงานหรือไม่
+  const isFamily = 
+    role.includes("ครอบครัว") || role.includes("ผู้ติดตาม") || role.includes("ผู้อาศัย") || 
+    role.includes("ร่วมอาศัย") || role.includes("ญาติ") || role.includes("บุตร") || role.includes("ภรรยา") || role.includes("สามี") ||
+    role.includes("family") || role.includes("dependent") || role.includes("resident") || 
+    role.includes("follower") || role.includes("spouse") || role.includes("child") ||
+    subcontractorText.includes("ครอบครัว") || subcontractorText.includes("ผู้ติดตาม") || subcontractorText.includes("ผู้อาศัย") || 
+    subcontractorText.includes("ร่วมอาศัย") || subcontractorText.includes("ญาติ") || subcontractorText.includes("family") || 
+    subcontractorText.includes("dependent") || subcontractorText.includes("resident") || subcontractorText.includes("follower");
+
+  const isCMG = sub.includes("CMG") || sub === "DC" || w.employmentTypes?.dc;
+
+  // หากเป็นผู้อาศัยร่วม/ครอบครัวพนักงาน
+  if (isFamily) {
+    // หากผู้อาศัยคนนั้นอยู่ร่วมกับ บ. CMG ก็จะเป็น FM แต่หากอยู่ร่วมกับผู้รับเหมาก็จะเป็น SUB
+    return isCMG ? "FM" : "SUB";
+  }
+
+  if (isCMG) {
+     // 1. ตรวจสอบสัญชาติเป็นหลักก่อน (ถ้าระบุไว้ และไม่เป็นค่า -)
+     const nationality = (w.nationality || "").trim();
+     if (nationality !== "" && nationality !== "-") {
+       const nat = nationality.toLowerCase();
+       const isThaiNationality = nat.includes("ไทย") || nat.includes("thai");
+       return isThaiNationality ? "DC TH" : "DC FR";
+     }
+
+     // 2. ถ้าไม่มีข้อมูลสัญชาติ หรือใส่ค่า - ให้ตรวจสอบจากตัวอักษรของชื่อ
+     const hasThai = /[ก-๛]/.test(w.firstName);
+     const hasEnglish = /[A-Za-z]/.test(w.firstName);
+     
+     // ถ้าชื่อเป็นภาษาอังกฤษ (มีอักษรภาษาอังกฤษและไม่มีอักษรไทย) จะถูกจัดเป็น DC FR ทันที
+     if (hasEnglish && !hasThai) {
+       return "DC FR";
+     }
+
+     // นอกเหนือจากนั้น ให้เป็น DC TH
+     return "DC TH";
+  }
+  return "SUB";
 }
 
 export default function DashboardClient() {
@@ -37,6 +84,30 @@ export default function DashboardClient() {
   const zoneMap = useMemo(() => new Map(campZones.map((z) => [z.id, z.label])), [campZones]);
   const roomMap = useMemo(() => new Map(rooms.map((r) => [r.id, r.number])), [rooms]);
 
+  // Resident groups count and gender stats
+  const residentGroupStats = useMemo(() => {
+    const statsObj = {
+      "DC TH": { total: 0, male: 0, female: 0 },
+      "DC FR": { total: 0, male: 0, female: 0 },
+      "FM": { total: 0, male: 0, female: 0 },
+      "SUB": { total: 0, male: 0, female: 0 },
+    };
+
+    campWorkers.forEach((w) => {
+      const label = getWorkerLabel(w) as keyof typeof statsObj;
+      if (statsObj[label]) {
+        statsObj[label].total++;
+        if (w.gender === "female") {
+          statsObj[label].female++;
+        } else {
+          statsObj[label].male++;
+        }
+      }
+    });
+
+    return statsObj;
+  }, [campWorkers]);
+
   // Enrich rooms with resident counts and computed status
   const enrichedRooms = useMemo(() => {
     return campRooms.map((room) => {
@@ -56,6 +127,15 @@ export default function DashboardClient() {
 
     if (drawerType === "workers") {
       let filtered = campWorkers;
+      
+      // Filter by resident group if selected
+      if (["DC_TH", "DC_FR", "FM", "SUB"].includes(drawerFilter)) {
+        const targetLabel = drawerFilter.replace("_", " "); // "DC TH" etc
+        filtered = filtered.filter((w) => getWorkerLabel(w) === targetLabel);
+      } else if (drawerFilter === "present") {
+        // Keeps all workers since they are in-camp (or default list)
+      }
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(
@@ -242,6 +322,75 @@ export default function DashboardClient() {
           </div>
         </div>
       )}
+
+      {/* Resident Groups Breakdown */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">กลุ่มผู้พักอาศัยทั้งหมด ({campWorkers.length} คน)</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <GroupBreakdownCard
+            label="DC TH"
+            subLabel="CMG (คนไทย)"
+            value={residentGroupStats["DC TH"].total}
+            percent={campWorkers.length > 0 ? Math.round((residentGroupStats["DC TH"].total / campWorkers.length) * 100) : 0}
+            maleCount={residentGroupStats["DC TH"].male}
+            femaleCount={residentGroupStats["DC TH"].female}
+            bg="bg-blue-50"
+            border="border-blue-100"
+            textColor="text-blue-700"
+            dotBg="bg-blue-500"
+            onClick={() => openDrawer("workers", "กลุ่มผู้พักอาศัย: CMG (คนไทย) [DC TH]", "DC_TH")}
+          />
+          <GroupBreakdownCard
+            label="DC FR"
+            subLabel="CMG (ต่างชาติ)"
+            value={residentGroupStats["DC FR"].total}
+            percent={campWorkers.length > 0 ? Math.round((residentGroupStats["DC FR"].total / campWorkers.length) * 100) : 0}
+            maleCount={residentGroupStats["DC FR"].male}
+            femaleCount={residentGroupStats["DC FR"].female}
+            bg="bg-teal-50"
+            border="border-teal-100"
+            textColor="text-teal-700"
+            dotBg="bg-teal-500"
+            onClick={() => openDrawer("workers", "กลุ่มผู้พักอาศัย: CMG (ต่างชาติ) [DC FR]", "DC_FR")}
+          />
+          <GroupBreakdownCard
+            label="FM"
+            subLabel="ครอบครัว/ผู้อาศัยร่วม (CMG)"
+            value={residentGroupStats["FM"].total}
+            percent={campWorkers.length > 0 ? Math.round((residentGroupStats["FM"].total / campWorkers.length) * 100) : 0}
+            maleCount={residentGroupStats["FM"].male}
+            femaleCount={residentGroupStats["FM"].female}
+            bg="bg-purple-50"
+            border="border-purple-100"
+            textColor="text-purple-700"
+            dotBg="bg-purple-500"
+            onClick={() => openDrawer("workers", "กลุ่มผู้พักอาศัย: ครอบครัว/ผู้อาศัยร่วม [FM]", "FM")}
+          />
+          <GroupBreakdownCard
+            label="SUB"
+            subLabel="ผู้รับเหมา"
+            value={residentGroupStats["SUB"].total}
+            percent={campWorkers.length > 0 ? Math.round((residentGroupStats["SUB"].total / campWorkers.length) * 100) : 0}
+            maleCount={residentGroupStats["SUB"].male}
+            femaleCount={residentGroupStats["SUB"].female}
+            bg="bg-amber-50"
+            border="border-amber-100"
+            textColor="text-amber-700"
+            dotBg="bg-amber-500"
+            onClick={() => openDrawer("workers", "กลุ่มผู้พักอาศัย: ผู้รับเหมา [SUB]", "SUB")}
+          />
+        </div>
+
+        {/* Progress Bar Visualizer */}
+        <div className="mt-4 flex h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+          <div style={{ width: `${campWorkers.length > 0 ? (residentGroupStats["DC TH"].total / campWorkers.length) * 100 : 0}%` }} className="bg-blue-500 transition-all duration-500" title={`CMG คนไทย ${residentGroupStats["DC TH"].total} คน`} />
+          <div style={{ width: `${campWorkers.length > 0 ? (residentGroupStats["DC FR"].total / campWorkers.length) * 100 : 0}%` }} className="bg-teal-500 transition-all duration-500" title={`CMG ต่างชาติ ${residentGroupStats["DC FR"].total} คน`} />
+          <div style={{ width: `${campWorkers.length > 0 ? (residentGroupStats["FM"].total / campWorkers.length) * 100 : 0}%` }} className="bg-purple-500 transition-all duration-500" title={`ครอบครัว CMG ${residentGroupStats["FM"].total} คน`} />
+          <div style={{ width: `${campWorkers.length > 0 ? (residentGroupStats["SUB"].total / campWorkers.length) * 100 : 0}%` }} className="bg-amber-500 transition-all duration-500" title={`ผู้รับเหมา ${residentGroupStats["SUB"].total} คน`} />
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 animate-fade-in">
         {/* Recent access logs */}
@@ -521,6 +670,67 @@ function MiniBreakdownCard({
         </div>
       </div>
       <span className="text-[9px] font-medium text-gray-400 bg-white/60 px-1 py-0.5 rounded shrink-0">{percent}%</span>
+    </button>
+  );
+}
+
+function GroupBreakdownCard({
+  label,
+  subLabel,
+  value,
+  percent,
+  maleCount,
+  femaleCount,
+  bg,
+  border,
+  textColor,
+  dotBg,
+  onClick,
+}: {
+  label: string;
+  subLabel: string;
+  value: number;
+  percent: number;
+  maleCount: number;
+  femaleCount: number;
+  bg: string;
+  border: string;
+  textColor: string;
+  dotBg: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className={`rounded-xl border p-3 ${bg} ${border} flex flex-col justify-between w-full text-left transition-all duration-200 ${
+        onClick ? "hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer" : ""
+      }`}
+    >
+      <div className="flex items-start justify-between w-full">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotBg}`} />
+          <div className="min-w-0">
+            <p className="text-[10px] font-extrabold text-gray-800 uppercase tracking-wider">{label}</p>
+            <p className="text-[9px] text-gray-400 truncate leading-none mt-0.5">{subLabel}</p>
+          </div>
+        </div>
+        <span className="text-[9px] font-bold text-gray-400 bg-white/70 px-1.5 py-0.5 rounded shrink-0">{percent}%</span>
+      </div>
+
+      <div className="mt-3 flex items-baseline justify-between w-full">
+        <p className={`text-xl font-black leading-none ${textColor}`}>{value}</p>
+        
+        {/* Gender breakdown */}
+        <div className="flex items-center gap-1 text-[9px] font-semibold text-gray-500">
+          <span className="flex items-center gap-0.5 text-blue-600 bg-blue-50/50 px-1 py-0.5 rounded">
+            <Mars className="h-2.5 w-2.5" /> {maleCount}
+          </span>
+          <span className="flex items-center gap-0.5 text-pink-600 bg-pink-50/50 px-1 py-0.5 rounded">
+            <Venus className="h-2.5 w-2.5" /> {femaleCount}
+          </span>
+        </div>
+      </div>
     </button>
   );
 }
