@@ -20,6 +20,13 @@ export interface DashboardData {
     roomsOccupied: number;
     roomsTotal: number;
     alerts: number;
+    roomBreakdown: {
+      empty: number;
+      partial: number;
+      full: number;
+      maintenance: number;
+      storage: number;
+    };
   };
   logs: AccessLog[];
   chartData: { day: string; count: number }[];
@@ -65,11 +72,19 @@ export function useDashboard(_campId: string) {
       const roomsTotal = campRooms.length;
       let alerts = 0;
 
+      const roomBreakdown = {
+        empty: 0,
+        partial: 0,
+        full: 0,
+        maintenance: 0,
+        storage: 0,
+      };
+
       campRooms.forEach((room) => {
         const residentsCount = campWorkers.filter((w) => w.roomId === room.id).length;
         
         // Compute status dynamically
-        let computedStatus = "empty";
+        let computedStatus: "empty" | "partial" | "full" | "maintenance" | "storage" = "empty";
         if (room.status === "maintenance") {
           computedStatus = "maintenance";
         } else if (room.status === "storage") {
@@ -81,6 +96,8 @@ export function useDashboard(_campId: string) {
         } else {
           computedStatus = "partial";
         }
+
+        roomBreakdown[computedStatus]++;
 
         if (computedStatus === "partial" || computedStatus === "full") {
           roomsOccupied++;
@@ -98,6 +115,7 @@ export function useDashboard(_campId: string) {
           roomsOccupied,
           roomsTotal,
           alerts,
+          roomBreakdown,
         },
         logs: [],
         chartData: [],

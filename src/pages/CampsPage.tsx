@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Pencil, Trash2, X, Building2, Loader2, ChevronDown, MapPin } from "lucide-react";
 import { useCamps, addCamp, updateCamp, deleteCamp, type Camp, type CampStatus } from "@/lib/db/useCamps";
 import { useZones, addZone, updateZone, deleteZone, type Zone } from "@/lib/db/useRooms";
+import { useCamp } from "@/context/CampContext";
 
 const STATUS_STYLES: Record<CampStatus, string> = {
   Active:      "bg-green-100 text-green-700",
@@ -18,6 +19,7 @@ const STATUS_THAI: Record<CampStatus, string> = {
 const emptyForm = { name: "", location: "", capacity: "" };
 
 export default function CampsPage() {
+  const { selectedCamp } = useCamp();
   const [activeTab, setActiveTab] = useState<"camps" | "zones">("camps");
   const { camps, loading: loadingCamps } = useCamps();
   const { zones, loading: loadingZones } = useZones();
@@ -33,6 +35,13 @@ export default function CampsPage() {
 
   // Zones State
   const [selectedCampId, setSelectedCampId] = useState<string>("");
+
+  // Sync with global camp selection from Navbar
+  useEffect(() => {
+    if (selectedCamp?.id) {
+      setSelectedCampId(selectedCamp.id);
+    }
+  }, [selectedCamp]);
   const [zoneModalOpen, setZoneModalOpen] = useState(false);
   const [editingZone, setEditingZone] = useState<Zone | null>(null);
   const [zoneForm, setZoneForm] = useState({ label: "" });

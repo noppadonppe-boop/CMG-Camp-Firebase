@@ -20,7 +20,15 @@ export function CampProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!selectedCamp && camps.length > 0) {
-      setSelectedCamp(camps[0]);
+      // Find "CMG Maptaput" (or similar variations)
+      const defaultCamp = camps.find(
+        (c) =>
+          c.name.toLowerCase().includes("maptaput") ||
+          c.name.toLowerCase().includes("maptaphut") ||
+          c.name.toLowerCase().includes("map ta phut") ||
+          c.name.includes("มาบตาพุด")
+      );
+      setSelectedCamp(defaultCamp || camps[0]);
     }
   }, [camps, selectedCamp]);
 

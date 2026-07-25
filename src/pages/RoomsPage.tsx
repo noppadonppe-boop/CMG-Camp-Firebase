@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useState, useEffect } from "react";
 import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package } from "lucide-react";
 import {
   useRooms,
@@ -11,6 +11,7 @@ import {
   type RoomStatus,
 } from "@/lib/db/useRooms";
 import { useCamps } from "@/lib/db/useCamps";
+import { useCamp } from "@/context/CampContext";
 import { useWorkers, updateWorker, type Worker } from "@/lib/db/useWorkers";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -937,6 +938,7 @@ function CustomSiteMap({ rooms, workers, onRoomClick }: { rooms: (Room & { compu
 
 export default function RoomsPage() {
   const { userProfile } = useAuth();
+  const { selectedCamp } = useCamp();
   const canEditRoom = userProfile?.roles?.includes("CampBoss") || userProfile?.roles?.includes("MasterAdmin");
   const { camps, loading: campsLoading } = useCamps();
   const { zones, loading: zonesLoading } = useZones();
@@ -945,6 +947,15 @@ export default function RoomsPage() {
   
   const [selectedCampId, setSelectedCampId] = useState<string>("all");
   const [selectedZoneId, setSelectedZoneId] = useState<string>("all");
+
+  // Sync with global camp selection from Navbar
+  useEffect(() => {
+    if (selectedCamp?.id) {
+      setSelectedCampId(selectedCamp.id);
+      setSelectedZoneId("all");
+    }
+  }, [selectedCamp]);
+
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activeRoom, setActiveRoom] = useState<Room | null>(null);
   const [roomToEdit, setRoomToEdit] = useState<Room | null>(null);

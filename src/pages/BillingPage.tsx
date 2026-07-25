@@ -3,6 +3,7 @@ import { Droplets, Zap, Wrench, ChevronDown, Loader2, TrendingUp, Building2 } fr
 import { useRooms, useZones, type Room } from "@/lib/db/useRooms";
 import { useWorkers } from "@/lib/db/useWorkers";
 import { useCamps } from "@/lib/db/useCamps";
+import { useCamp } from "@/context/CampContext";
 import { collection, query, orderBy, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { ElectricityRecord, MaintenanceFeeRecord } from "@/lib/db/useRoomHistory";
@@ -158,6 +159,7 @@ function RoomBillingRow({ room, occupants, elec, maint }: {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function BillingPage() {
+  const { selectedCamp } = useCamp();
   const { rooms, loading: roomsLoading } = useRooms();
   const { zones, loading: zonesLoading } = useZones();
   const { camps, loading: campsLoading } = useCamps();
@@ -167,6 +169,13 @@ export default function BillingPage() {
   const thisMonth = new Date().toISOString().slice(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(thisMonth);
   const [selectedCampId, setSelectedCampId] = useState("all");
+
+  // Sync with global camp selection from Navbar
+  useEffect(() => {
+    if (selectedCamp?.id) {
+      setSelectedCampId(selectedCamp.id);
+    }
+  }, [selectedCamp]);
 
   // Build month options (current month + 11 prior)
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
