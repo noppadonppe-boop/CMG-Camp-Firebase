@@ -14,6 +14,7 @@ export default function AnnouncementsAdminPage() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewingAckFor, setViewingAckFor] = useState<Announcement | null>(null);
   
   const [formData, setFormData] = useState<{
     title: string;
@@ -137,6 +138,14 @@ export default function AnnouncementsAdminPage() {
                   <div className="flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
                     รับทราบแล้ว: {a.acknowledgedBy?.length || 0} คน
+                    {a.acknowledgedBy && a.acknowledgedBy.length > 0 && (
+                      <button 
+                        onClick={() => setViewingAckFor(a)}
+                        className="ml-1 text-blue-600 hover:underline cursor-pointer"
+                      >
+                        (ดูรายชื่อ)
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -252,6 +261,46 @@ export default function AnnouncementsAdminPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Acknowledged By Modal */}
+      {viewingAckFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">
+                ผู้ที่รับทราบประกาศนี้แล้ว
+              </h2>
+              <button onClick={() => setViewingAckFor(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              <div className="space-y-3">
+                {viewingAckFor.acknowledgedBy.map(uid => {
+                  const user = users.find(u => u.uid === uid);
+                  return (
+                    <div key={uid} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      {user?.photoURL ? (
+                        <img src={user.photoURL} alt={user.firstName} className="w-8 h-8 rounded-full" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                          {user ? user.firstName.charAt(0) : '?'}
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-sm font-bold text-gray-900">
+                          {user ? `${user.firstName} ${user.lastName}` : 'ผู้ใช้ไม่ทราบชื่อ'}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {user ? user.roles.join(', ') : uid}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}

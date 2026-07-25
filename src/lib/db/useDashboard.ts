@@ -33,20 +33,72 @@ export function useDashboard(_campId: string) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let workers: { roomId: string }[] = [];
-    let rooms: { status: string }[] = [];
+    if (!_campId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
+    let workers: { id: string; roomId: string; zoneId: string }[] = [];
+    let rooms: { id: string; status: string; zoneId: string; capacity: number }[] = [];
+    let zones: { id: string; campId?: string }[] = [];
+    
     let workersReady = false;
     let roomsReady = false;
+    let zonesReady = false;
 
     function derive() {
-      if (!workersReady || !roomsReady) return;
-      const totalWorkers = workers.length;
-      const roomsOccupied = rooms.filter((r) => r.status !== "empty" && r.status !== "maintenance").length;
-      const roomsTotal = rooms.length;
-      const alerts = rooms.filter((r) => r.status === "maintenance").length;
+      if (!workersReady || !roomsReady || !zonesReady) return;
+
+      // Filter zones by campId
+      const campZones = zones.filter((z) => z.campId === _campId);
+      const campZoneIds = campZones.map((z) => z.id);
+
+      // Filter rooms and workers
+      const campRooms = rooms.filter((r) => campZoneIds.includes(r.zoneId));
+      const campWorkers = workers.filter((w) => campZoneIds.includes(w.zoneId));
+
+      const totalWorkers = campWorkers.length;
+
+      // Dynamically compute room occupancy and stats
+      let roomsOccupied = 0;
+      const roomsTotal = campRooms.length;
+      let alerts = 0;
+
+      campRooms.forEach((room) => {
+        const residentsCount = campWorkers.filter((w) => w.roomId === room.id).length;
+        
+        // Compute status dynamically
+        let computedStatus = "empty";
+        if (room.status === "maintenance") {
+          computedStatus = "maintenance";
+        } else if (room.status === "storage") {
+          computedStatus = "storage";
+        } else if (residentsCount === 0) {
+          computedStatus = "empty";
+        } else if (residentsCount >= room.capacity) {
+          computedStatus = "full";
+        } else {
+          computedStatus = "partial";
+        }
+
+        if (computedStatus === "partial" || computedStatus === "full") {
+          roomsOccupied++;
+        }
+        if (computedStatus === "maintenance") {
+          alerts++;
+        }
+      });
+
       setData({
         campName: "",
-        stats: { totalWorkers, present: totalWorkers, roomsOccupied, roomsTotal, alerts },
+        stats: {
+          totalWorkers,
+          present: totalWorkers,
+          roomsOccupied,
+          roomsTotal,
+          alerts,
+        },
         logs: [],
         chartData: [],
       });
@@ -55,17 +107,48 @@ export function useDashboard(_campId: string) {
 
     const unsubWorkers = onSnapshot(
       query(collection(db, ROOT, ROOT_DOC, "workers")),
-      (snap) => { workers = snap.docs.map((d) => d.data() as { roomId: string }); workersReady = true; derive(); },
-      () => { workersReady = true; derive(); }
+      (snap) => {
+        workers = snap.docs.map((d) => ({ id: d.id, ...d.data() } as { id: string; roomId: string; zoneId: string }));
+        workersReady = true;
+        derive();
+      },
+      () => {
+        workersReady = true;
+        derive();
+      }
     );
 
     const unsubRooms = onSnapshot(
       query(collection(db, ROOT, ROOT_DOC, "rooms")),
-      (snap) => { rooms = snap.docs.map((d) => d.data() as { status: string }); roomsReady = true; derive(); },
-      () => { roomsReady = true; derive(); }
+      (snap) => {
+        rooms = snap.docs.map((d) => ({ id: d.id, ...d.data() } as { id: string; status: string; zoneId: string; capacity: number }));
+        roomsReady = true;
+        derive();
+      },
+      () => {
+        roomsReady = true;
+        derive();
+      }
     );
 
-    return () => { unsubWorkers(); unsubRooms(); };
+    const unsubZones = onSnapshot(
+      query(collection(db, ROOT, ROOT_DOC, "zones")),
+      (snap) => {
+        zones = snap.docs.map((d) => ({ id: d.id, ...d.data() } as { id: string; campId?: string }));
+        zonesReady = true;
+        derive();
+      },
+      () => {
+        zonesReady = true;
+        derive();
+      }
+    );
+
+    return () => {
+      unsubWorkers();
+      unsubRooms();
+      unsubZones();
+    };
   }, [_campId]);
 
   return { data, loading };
