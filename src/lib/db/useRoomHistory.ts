@@ -234,3 +234,71 @@ export async function deleteMaintenanceFeeRecord(roomId: string, recordId: strin
   const docRef = doc(db, ROOT, ROOT_DOC, "rooms", roomId, "maintenanceFeeHistory", recordId);
   await deleteDoc(docRef);
 }
+
+// ─── Reservation (Booking Lock) History ──────────────────────────────────────
+export interface ReservationRecord {
+  id: string;
+  action: "reserved" | "cancelled" | "deleted";
+  by: string;       // uid ของผู้ทำรายการ
+  byName: string;    // ชื่อผู้ทำรายการ
+  reason?: string;   // เหตุผล (บังคับเฉพาะ action = "deleted")
+  date: Timestamp | null;
+}
+
+export function useReservationHistory(roomId: string) {
+  const [records, setRecords] = useState<ReservationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const reload = useCallback(() => {
+    setRefreshKey((prev) => prev + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!roomId) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function loadHistory() {
+      try {
+        const q = query(
+          collection(db, ROOT, ROOT_DOC, "rooms", roomId, "reservationHistory"),
+          orderBy("date", "desc")
+        );
+        const snap = await getDocs(q);
+
+        if (!isCancelled) {
+          setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReservationRecord)));
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error loading reservation history:', error);
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadHistory();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [roomId, refreshKey]);
+
+  return { records, loading, reload };
+}
+
+export async function addReservationRecord(
+  roomId: string,
+  data: Omit<ReservationRecord, "id" | "date">
+) {
+  await addDoc(
+    collection(db, ROOT, ROOT_DOC, "rooms", roomId, "reservationHistory"),
+    { ...data, date: serverTimestamp() }
+  );
+}

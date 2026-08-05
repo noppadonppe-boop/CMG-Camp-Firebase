@@ -9,10 +9,15 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  deleteField,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export type RoomStatus = "empty" | "partial" | "full" | "maintenance" | "storage";
+
+/** จำนวนวันที่การล็อกจองห้องมีอายุก่อนหมดอายุอัตโนมัติ */
+export const RESERVATION_DURATION_DAYS = 7;
 
 export interface Room {
   id: string;
@@ -21,6 +26,11 @@ export interface Room {
   occupied: number;
   capacity: number;
   status: RoomStatus;
+  // ─── การจองห้อง (Reservation Lock) ───────────────────────────────────────
+  reservedBy?: string;       // uid ของผู้จอง
+  reservedByName?: string;   // ชื่อผู้จอง (แสดงผล)
+  reservedAt?: Timestamp;    // เวลาที่ทำการจอง
+  reservationExpiresAt?: Timestamp; // เวลาที่การจองจะหมดอายุ (reservedAt + 7 วัน)
 }
 
 export interface Zone {
@@ -120,4 +130,32 @@ export async function updateRoom(id: string, data: Partial<Omit<Room, "id">>) {
 
 export async function deleteRoom(id: string) {
   await deleteDoc(doc(db, ROOT, ROOT_DOC, "rooms", id));
+}
+
+/** ตรวจสอบว่าห้องนี้มีการจอง (ล็อกห้อง) ที่ยังไม่หมดอายุอยู่หรือไม่ */
+export function isReservationActive(room: Room): boolean {
+  if (!room.reservedBy || !room.reservationExpiresAt) return false;
+  return room.reservationExpiresAt.toMillis() > Date.now();
+}
+
+/** จองห้อง (ล็อกห้องไว้ก่อน) มีอายุ 7 วันนับจากขณะที่จอง */
+export async function reserveRoom(id: string, reservedBy: string, reservedByName: string) {
+  const now = Timestamp.now();
+  const expiresAt = Timestamp.fromMillis(now.toMillis() + RESERVATION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+  await updateDoc(doc(db, ROOT, ROOT_DOC, "rooms", id), {
+    reservedBy,
+    reservedByName,
+    reservedAt: now,
+    reservationExpiresAt: expiresAt,
+  });
+}
+
+/** ยกเลิก/ล้างการจองห้อง (ใช้ทั้งกรณีผู้จองยกเลิกเอง และกรณี Manager ขึ้นไปลบการจอง) */
+export async function clearRoomReservation(id: string) {
+  await updateDoc(doc(db, ROOT, ROOT_DOC, "rooms", id), {
+    reservedBy: deleteField(),
+    reservedByName: deleteField(),
+    reservedAt: deleteField(),
+    reservationExpiresAt: deleteField(),
+  });
 }

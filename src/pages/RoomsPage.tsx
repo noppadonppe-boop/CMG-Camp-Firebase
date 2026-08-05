@@ -1,11 +1,15 @@
 ﻿import { useState, useEffect } from "react";
-import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package } from "lucide-react";
+import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package, Lock, LockOpen, ShieldAlert } from "lucide-react";
 import {
   useRooms,
   useZones,
   addRoom,
   updateRoom,
   deleteRoom,
+  reserveRoom,
+  clearRoomReservation,
+  isReservationActive,
+  RESERVATION_DURATION_DAYS,
   type Room,
   type Zone,
   type RoomStatus,
@@ -14,16 +18,40 @@ import { useCamps } from "@/lib/db/useCamps";
 import { useCamp } from "@/context/CampContext";
 import { useWorkers, updateWorker, type Worker } from "@/lib/db/useWorkers";
 import { useAuth } from "@/context/AuthContext";
+import { USER_ROLES, type UserRole } from "@/types/auth";
 import {
   useOccupancyHistory,
   useElectricityHistory,
   useMaintenanceFeeHistory,
+  useReservationHistory,
   addOccupancyRecord,
   addElectricityRecord,
   addMaintenanceFeeRecord,
+  addReservationRecord,
   deleteElectricityRecord,
   deleteMaintenanceFeeRecord,
 } from "@/lib/db/useRoomHistory";
+
+/** อันดับของสิทธิ์ (index ยิ่งน้อย = สิทธิ์สูงกว่า) ใช้เทียบว่า role ใด "ขึ้นไป" ถึงระดับที่กำหนด */
+function getRoleRank(roles?: UserRole[]): number {
+  if (!roles || roles.length === 0) return USER_ROLES.length;
+  let best: number = USER_ROLES.length;
+  for (const r of roles) {
+    const idx = USER_ROLES.indexOf(r);
+    if (idx !== -1 && idx < best) best = idx;
+  }
+  return best;
+}
+const CAMPBOSS_RANK = USER_ROLES.indexOf("CampBoss");
+const MANAGER_RANK = USER_ROLES.indexOf("Manager");
+/** CampBoss ขึ้นไป: มีสิทธิ์จอง/ล็อกห้อง */
+function canReserveRooms(roles?: UserRole[]) {
+  return getRoleRank(roles) <= CAMPBOSS_RANK;
+}
+/** Manager ขึ้นไป: มีสิทธิ์ลบการจองของผู้อื่น (ต้องระบุเหตุผล) */
+function canDeleteReservations(roles?: UserRole[]) {
+  return getRoleRank(roles) <= MANAGER_RANK;
+}
 
 
 const STATUS_CONFIG: Record<RoomStatus, { label: string; cardBg: string; cardBorder: string; cardHover: string; badgeBg: string; badgeText: string; textColor: string; dotColor: string; icon: React.ElementType }> = {
@@ -57,11 +85,16 @@ function RoomCard({ room, workers, onClick, canEdit, onEdit, onDelete }: { room:
   const compStatus = getComputedStatus(room, residents.length);
   const cfg = STATUS_CONFIG[compStatus];
   const Icon = cfg.icon;
+  const reserved = isReservationActive(room);
   
   const displayResidents = residents.slice(0, 3);
   return (
     <button onClick={onClick} className={`group relative flex w-full flex-col items-start rounded-2xl border p-2.5 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1 shadow-sm hover:shadow-md hover:-translate-y-0.5 cursor-pointer ${cfg.cardBg} ${cfg.cardBorder} ${cfg.cardHover}`}>
-      
+      {reserved && (
+        <span className="absolute -top-1.5 -right-1.5 z-10 flex items-center gap-0.5 rounded-full bg-purple-600 px-1.5 py-0.5 text-[8px] font-bold text-white shadow-sm">
+          <Lock className="h-2.5 w-2.5" /> จองแล้ว
+        </span>
+      )}
       {/* Header */}
       <div className="flex w-full items-start justify-between gap-1">
         <div className="flex flex-col items-start gap-1">
@@ -248,6 +281,50 @@ function QuickEditWorkerModal({ worker, onClose }: { worker: Worker; onClose: ()
   );
 }
 
+function DeleteReservationModal({ room, onClose, onConfirm }: { room: Room; onClose: () => void; onConfirm: (reason: string) => Promise<void> }) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit() {
+    if (!reason.trim()) { setError("กรุณาระบุเหตุผลในการลบการจอง"); return; }
+    setSaving(true);
+    try {
+      await onConfirm(reason.trim());
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ลบการจองไม่สำเร็จ");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2"><ShieldAlert className="h-5 w-5 text-red-600" /><h3 className="text-base font-bold text-gray-800">ลบการจองห้อง {room.number}</h3></div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
+        </div>
+        <p className="mb-3 text-xs text-gray-500">การจองโดย <span className="font-semibold text-gray-700">{room.reservedByName || "-"}</span> จะถูกยกเลิก กรุณาระบุเหตุผลในการลบเพื่อบันทึกในประวัติ</p>
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-600">เหตุผลในการลบ <span className="text-red-500">*</span></label>
+            <textarea value={reason} onChange={(e) => { setReason(e.target.value); setError(""); }} rows={3} placeholder="เช่น ผู้จองไม่มาดำเนินการตามกำหนด / จองผิดห้อง" className="w-full resize-none rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-red-400 hover:border-gray-400" />
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+        <div className="mt-5 flex gap-3">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition">ยกเลิก</button>
+          <button onClick={handleSubmit} disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 active:scale-95 transition disabled:opacity-60">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} ลบการจอง
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RoomSidePanel({ room, workers, onClose, canEdit, onEditRoom, onDeleteRoom }: { room: Room; workers: Worker[]; onClose: () => void; canEdit?: boolean; onEditRoom?: () => void; onDeleteRoom?: () => void }) {
   const { userProfile } = useAuth();
   const isMasterAdmin = userProfile?.roles?.includes("MasterAdmin");
@@ -269,8 +346,54 @@ function RoomSidePanel({ room, workers, onClose, canEdit, onEditRoom, onDeleteRo
   const { records: occRecords, reload: reloadOccupancyHistory } = useOccupancyHistory(room.id);
   const { records: elecRecords, reload: reloadElectricityHistory } = useElectricityHistory(room.id);
   const { records: maintRecords, reload: reloadMaintenanceHistory } = useMaintenanceFeeHistory(room.id);
+  const { reload: reloadReservationHistory } = useReservationHistory(room.id);
+  const [reserving, setReserving] = useState(false);
+  const [cancellingReservation, setCancellingReservation] = useState(false);
+  const [showDeleteReservation, setShowDeleteReservation] = useState(false);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const fmtMonth = (m: string) => { const [y, mo] = m.split("-"); return new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" }); };
+  const fmtDateTime = (ts?: import("firebase/firestore").Timestamp) => ts ? ts.toDate().toLocaleString("th-TH", { day: "2-digit", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-";
+
+  const reservationActive = isReservationActive(room);
+  const isMyReservation = reservationActive && room.reservedBy === userProfile?.uid;
+  const canReserve = canReserveRooms(userProfile?.roles);
+  const canDeleteRes = canDeleteReservations(userProfile?.roles);
+  const displayName = `${userProfile?.firstName || ""} ${userProfile?.lastName || ""}`.trim() || userProfile?.email || "ไม่ทราบชื่อ";
+
+  async function handleReserveRoom() {
+    if (!userProfile) return;
+    if (!window.confirm(`ต้องการจอง (ล็อก) ห้อง ${room.number} หรือไม่?\nการจองมีอายุ ${RESERVATION_DURATION_DAYS} วัน`)) return;
+    setReserving(true);
+    try {
+      await reserveRoom(room.id, userProfile.uid, displayName);
+      await addReservationRecord(room.id, { action: "reserved", by: userProfile.uid, byName: displayName });
+      reloadReservationHistory();
+    } catch {
+      alert("จองห้องไม่สำเร็จ");
+    }
+    setReserving(false);
+  }
+
+  async function handleCancelReservation() {
+    if (!userProfile) return;
+    if (!window.confirm(`ต้องการยกเลิกการจองห้อง ${room.number} หรือไม่?`)) return;
+    setCancellingReservation(true);
+    try {
+      await clearRoomReservation(room.id);
+      await addReservationRecord(room.id, { action: "cancelled", by: userProfile.uid, byName: displayName });
+      reloadReservationHistory();
+    } catch {
+      alert("ยกเลิกการจองไม่สำเร็จ");
+    }
+    setCancellingReservation(false);
+  }
+
+  async function handleDeleteReservation(reason: string) {
+    if (!userProfile) return;
+    await clearRoomReservation(room.id);
+    await addReservationRecord(room.id, { action: "deleted", by: userProfile.uid, byName: displayName, reason });
+    reloadReservationHistory();
+  }
 
   async function handleRemoveResident(w: Worker) {
     if (!window.confirm(`นำ ${w.firstName} ออกจากห้อง ${room.number}?`)) return;
@@ -411,6 +534,45 @@ function RoomSidePanel({ room, workers, onClose, canEdit, onEditRoom, onDeleteRo
 
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
+          {/* Section: การจองห้อง */}
+          <section>
+            <div className="flex items-center gap-2 mb-3"><div className="h-5 w-1 rounded-full bg-purple-500" /><h4 className="text-sm font-bold text-gray-800">การจองห้อง</h4></div>
+            {reservationActive ? (
+              <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <Lock className="h-4 w-4 shrink-0 mt-0.5 text-purple-600" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-purple-800">จองโดย {room.reservedByName || "-"}</p>
+                    <p className="text-[11px] text-purple-600 mt-0.5">จองเมื่อ: {fmtDateTime(room.reservedAt)}</p>
+                    <p className="text-[11px] text-purple-600">หมดอายุ: {fmtDateTime(room.reservationExpiresAt)}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {isMyReservation && (
+                    <button onClick={handleCancelReservation} disabled={cancellingReservation} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-white border border-purple-300 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100 transition disabled:opacity-60 cursor-pointer">
+                      {cancellingReservation ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LockOpen className="h-3.5 w-3.5" />} ยกเลิกจอง
+                    </button>
+                  )}
+                  {canDeleteRes && (
+                    <button onClick={() => setShowDeleteReservation(true)} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-50 border border-red-200 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 transition cursor-pointer">
+                      <Trash2 className="h-3.5 w-3.5" /> ลบการจอง (ระบุเหตุผล)
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-purple-200 py-5 text-center">
+                <LockOpen className="h-5 w-5 text-purple-300" />
+                <p className="text-xs text-gray-400">ห้องนี้ยังไม่มีการจอง</p>
+                {canReserve && (
+                  <button onClick={handleReserveRoom} disabled={reserving} className="mt-1 flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition disabled:opacity-60 cursor-pointer">
+                    {reserving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />} จองห้องนี้ ({RESERVATION_DURATION_DAYS} วัน)
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* Section: ผู้พัก */}
           {room.status !== "maintenance" && room.capacity > 0 && (
             <section>
@@ -602,6 +764,9 @@ function RoomSidePanel({ room, workers, onClose, canEdit, onEditRoom, onDeleteRo
       {editingWorker && (
         <QuickEditWorkerModal worker={editingWorker} onClose={() => setEditingWorker(null)} />
       )}
+      {showDeleteReservation && (
+        <DeleteReservationModal room={room} onClose={() => setShowDeleteReservation(false)} onConfirm={handleDeleteReservation} />
+      )}
     </>
   );
 }
@@ -744,12 +909,18 @@ function CustomSiteMap({ rooms, workers, onRoomClick }: { rooms: (Room & { compu
       return acc;
     }, {} as Record<string, string[]>);
 
+    const reserved = isReservationActive(room);
     return (
       <button 
         key={room.id}
         onClick={() => onRoomClick(room)}
         className={`relative w-16 sm:w-20 md:w-24 h-auto min-h-[2rem] md:min-h-[2.5rem] p-0.5 flex flex-col items-center justify-start border-2 shadow-sm rounded-md transition-all hover:scale-105 hover:z-20 cursor-pointer ${cfg.cardBg} ${cfg.cardBorder}`}
       >
+        {reserved && (
+          <span className="absolute -top-1.5 -right-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-purple-600 shadow-sm" title="ห้องนี้ถูกจองไว้">
+            <Lock className="h-2.5 w-2.5 text-white" />
+          </span>
+        )}
         <span className={`text-[8px] font-bold ${cfg.textColor} leading-none mb-0.5`}>{room.number}</span>
         <div className="flex flex-col items-center justify-center gap-0.5 w-full">
            {residents.length === 0 && room.computedStatus !== "maintenance" && room.computedStatus !== "storage" && (
@@ -826,6 +997,9 @@ function CustomSiteMap({ rooms, workers, onRoomClick }: { rooms: (Room & { compu
           </div>
           <div className="flex items-center gap-1.5">
             <Wrench className="w-3.5 h-3.5 text-gray-500" /> = <span className="text-gray-600">ซ่อมบำรุง</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-purple-600" /> = <span className="text-gray-600">ถูกจองไว้</span>
           </div>
         </div>
       </div>
@@ -997,7 +1171,7 @@ export default function RoomsPage() {
   }, [selectedCamp]);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [activeRoom, setActiveRoom] = useState<Room | null>(null);
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [roomToEdit, setRoomToEdit] = useState<Room | null>(null);
   const [showAddRoom, setShowAddRoom] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
@@ -1015,6 +1189,7 @@ export default function RoomsPage() {
   });
 
   const filteredRooms = statusFilter === "all" ? enrichedRooms : enrichedRooms.filter((r) => r.computedStatus === statusFilter);
+  const activeRoom = activeRoomId ? rooms.find((r) => r.id === activeRoomId) ?? null : null;
   const counts = { 
     empty: enrichedRooms.filter((r) => r.computedStatus === "empty").length, 
     partial: enrichedRooms.filter((r) => r.computedStatus === "partial").length, 
@@ -1126,14 +1301,14 @@ export default function RoomsPage() {
           <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white text-center"><Users className="h-8 w-8 text-gray-300" /><p className="mt-2 text-sm text-gray-400">ไม่พบห้องที่ตรงกับตัวกรองที่เลือก</p></div>
         ) : viewMode === "grid" ? (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
-            {filteredRooms.map((room) => <RoomCard key={room.id} workers={workers} room={room} onClick={() => setActiveRoom(room)} canEdit={canEditRoom} onEdit={() => setRoomToEdit(room)} onDelete={() => handleDeleteRoom(room)} />)}
+            {filteredRooms.map((room) => <RoomCard key={room.id} workers={workers} room={room} onClick={() => setActiveRoomId(room.id)} canEdit={canEditRoom} onEdit={() => setRoomToEdit(room)} onDelete={() => handleDeleteRoom(room)} />)}
           </div>
         ) : (
-          <CustomSiteMap rooms={filteredRooms} workers={workers} onRoomClick={(room) => setActiveRoom(room)} />
+          <CustomSiteMap rooms={filteredRooms} workers={workers} onRoomClick={(room) => setActiveRoomId(room.id)} />
         )}
       </div>
       
-      {activeRoom && <RoomSidePanel room={activeRoom} workers={workers} onClose={() => setActiveRoom(null)} canEdit={canEditRoom} onEditRoom={() => setRoomToEdit(activeRoom)} onDeleteRoom={() => handleDeleteRoom(activeRoom)} />}
+      {activeRoom && <RoomSidePanel room={activeRoom} workers={workers} onClose={() => setActiveRoomId(null)} canEdit={canEditRoom} onEditRoom={() => setRoomToEdit(activeRoom)} onDeleteRoom={() => handleDeleteRoom(activeRoom)} />}
       {roomToEdit && <EditRoomModal room={roomToEdit} zones={availableZones} workers={workers} onClose={() => setRoomToEdit(null)} />}
       {showAddRoom && <AddRoomModal zones={availableZones} defaultZoneId={selectedZoneId} onClose={() => setShowAddRoom(false)} />}
     </>
