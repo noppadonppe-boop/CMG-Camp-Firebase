@@ -58,8 +58,8 @@ export default function AnnouncementPopup() {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="bg-blue-600 px-6 py-4 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+        <div className="shrink-0 bg-blue-600 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 text-white">
             <div className="bg-white/20 p-2 rounded-full">
               <Megaphone className="w-5 h-5" />
@@ -75,26 +75,26 @@ export default function AnnouncementPopup() {
           </button>
         </div>
         
-        <div className="p-6 md:p-8">
+        <div className="p-6 md:p-8 overflow-y-auto flex-1 min-h-0">
           <h3 className="text-xl font-bold text-gray-900 mb-4">{activeAnnouncement.title}</h3>
-          <div className="prose prose-sm max-w-none text-gray-600 whitespace-pre-line mb-8 leading-relaxed">
+          <div className="prose prose-sm max-w-none text-gray-600 whitespace-pre-line leading-relaxed">
             {activeAnnouncement.content}
           </div>
-          
-          <div className="flex flex-col sm:flex-row gap-3 justify-end mt-4">
-            <button
-              onClick={handleHideForToday}
-              className="px-5 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition font-medium text-sm"
-            >
-              ไม่แสดงอีกวันนี้
-            </button>
-            <button
-              onClick={handleAcknowledge}
-              className="px-5 py-2.5 text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200 rounded-xl transition font-medium text-sm"
-            >
-              รับทราบ
-            </button>
-          </div>
+        </div>
+
+        <div className="shrink-0 flex flex-col sm:flex-row gap-3 justify-end p-6 pt-4 md:px-8 border-t border-gray-100">
+          <button
+            onClick={handleHideForToday}
+            className="px-5 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition font-medium text-sm"
+          >
+            ไม่แสดงอีกวันนี้
+          </button>
+          <button
+            onClick={handleAcknowledge}
+            className="px-5 py-2.5 text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200 rounded-xl transition font-medium text-sm"
+          >
+            รับทราบ
+          </button>
         </div>
       </div>
     </div>
