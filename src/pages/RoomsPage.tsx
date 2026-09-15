@@ -598,7 +598,10 @@ function RoomSidePanel({ room, workers, onClose, canEdit, onEditRoom, onDeleteRo
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] font-bold text-white shadow-sm">{i+1}</div>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-gray-800">{w.firstName} {w.lastName}</p>
-                          <p className="truncate text-[10px] text-gray-400">{w.jobRole} · {w.subcontractor}</p>
+                          <div className="mt-0.5 space-y-0.5 text-[10px] leading-4 text-gray-500">
+                            <p className="truncate"><span className="font-semibold text-gray-600">สถานที่ปฏิบัติงาน:</span> {w.assignedSite || "-"}</p>
+                            <p className="truncate"><span className="font-semibold text-gray-600">ตำแหน่ง:</span> {w.jobRole || "-"}</p>
+                          </div>
                         </div>
                       </div>
                       {canEdit && (

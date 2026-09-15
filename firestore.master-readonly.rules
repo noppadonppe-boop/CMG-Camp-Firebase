@@ -1,0 +1,16 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Master HR employee data: authenticated users (including anonymous) can read only.
+    match /CMG-HR-Database/root/employee_data/{employeeId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if false;
+    }
+
+    // Deny every operation not explicitly allowed above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
