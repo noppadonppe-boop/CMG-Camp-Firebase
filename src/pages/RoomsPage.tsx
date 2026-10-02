@@ -1,5 +1,5 @@
-﻿import { useState, useEffect } from "react";
-import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package, Lock, LockOpen, ShieldAlert } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package, Lock, LockOpen, ShieldAlert, Search } from "lucide-react";
 import {
   useRooms,
   useZones,
@@ -86,66 +86,42 @@ function RoomCard({ room, workers, onClick, canEdit, onEdit, onDelete }: { room:
   const cfg = STATUS_CONFIG[compStatus];
   const Icon = cfg.icon;
   const reserved = isReservationActive(room);
-  
-  const displayResidents = residents.slice(0, 3);
+  const unavailable = compStatus === "maintenance" || compStatus === "storage";
+  const statusStyle = compStatus === "full" ? "bg-red-600 text-white" : compStatus === "empty" ? "bg-emerald-600 text-white" : `${cfg.badgeBg} ${cfg.badgeText}`;
+
   return (
-    <button onClick={onClick} className={`group relative flex w-full flex-col items-start rounded-2xl border p-2.5 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1 shadow-sm hover:shadow-md hover:-translate-y-0.5 cursor-pointer ${cfg.cardBg} ${cfg.cardBorder} ${cfg.cardHover}`}>
-      {reserved && (
-        <span className="absolute -top-1.5 -right-1.5 z-10 flex items-center gap-0.5 rounded-full bg-purple-600 px-1.5 py-0.5 text-[8px] font-bold text-white shadow-sm">
-          <Lock className="h-2.5 w-2.5" /> จองแล้ว
-        </span>
-      )}
-      {/* Header */}
+    <div className={`group relative isolate flex min-w-0 flex-col items-start rounded-2xl border bg-[linear-gradient(155deg,#fafafa_0%,#f1f5f5_48%,#cff4f3_100%)] p-2.5 text-left shadow-[0_12px_22px_-8px_rgba(15,23,42,0.18),0_4px_8px_-3px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] transition duration-200 hover:shadow-[0_18px_28px_-8px_rgba(15,23,42,0.22)] motion-safe:hover:-translate-y-1 focus-within:ring-2 focus-within:ring-blue-400 focus-within:ring-offset-2 ${compStatus === "full" ? "border-red-400" : "border-white"}`}>
+      <button type="button" onClick={onClick} aria-label={`ดูรายละเอียดห้อง ${room.number}, ${cfg.label}${reserved ? ", จองแล้ว" : ""}`} className="absolute inset-0 z-10 cursor-pointer rounded-2xl focus:outline-none" />
+      {reserved && <span className="absolute -top-1.5 right-2 inline-flex items-center gap-1 rounded-lg bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-800"><Lock className="h-2.5 w-2.5" />จองแล้ว</span>}
       <div className="flex w-full items-start justify-between gap-1">
-        <div className="flex flex-col items-start gap-1">
-          <span className={`text-base font-extrabold tracking-tight leading-none ${cfg.textColor}`}>{room.number}</span>
-          <span className={`inline-flex items-center gap-1 rounded-full bg-white/60 px-1.5 py-0.5 text-[9px] font-bold shadow-sm ${cfg.textColor}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${cfg.dotColor}`} />
-            {cfg.label}
-          </span>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-white bg-cyan-100 text-cyan-800 shadow-sm"><Icon className="h-3.5 w-3.5" /></span>
+          <span className="min-w-0 break-all text-base font-extrabold leading-tight tracking-tight text-slate-800">{room.number}</span>
+          <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${statusStyle}`}><Icon className="h-2.5 w-2.5" />{cfg.label}</span>
         </div>
-        
-        {canEdit ? (
-          <div className="flex shrink-0 gap-0.5" onClick={(e) => e.stopPropagation()}>
-             <div onClick={onEdit} className="flex p-1.5 rounded-lg hover:bg-white/80 text-blue-600 transition active:scale-95"><Pencil className="h-3.5 w-3.5"/></div>
-             <div onClick={onDelete} className="flex p-1.5 rounded-lg hover:bg-white/80 text-red-500 transition active:scale-95"><Trash2 className="h-3.5 w-3.5"/></div>
-          </div>
-        ) : (
-          <Icon className={`h-4 w-4 shrink-0 ${cfg.textColor} opacity-60 mt-0.5`} />
-        )}
+        {canEdit ? <div className="relative z-20 flex shrink-0 gap-0.5">
+          <button type="button" onClick={onEdit} aria-label={`แก้ไขห้อง ${room.number}`} className="rounded-lg p-1 text-blue-600 hover:bg-white/80 focus-visible:outline-2 focus-visible:outline-blue-500"><Pencil className="h-3.5 w-3.5" /></button>
+          <button type="button" onClick={onDelete} aria-label={`ลบห้อง ${room.number}`} className="rounded-lg p-1 text-slate-500 hover:bg-white/80 focus-visible:outline-2 focus-visible:outline-blue-500"><Trash2 className="h-3.5 w-3.5" /></button>
+        </div> : <ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />}
       </div>
-
-      {/* Capacity info */}
-      <div className="mt-2.5 flex w-full items-center justify-between border-t border-black/5 pt-2">
-          <div className="flex items-center gap-1.5 opacity-90">
-            <Users className={`h-3.5 w-3.5 ${cfg.textColor}`} />
-            <span className={`text-[10px] font-bold tabular-nums tracking-wide ${cfg.textColor}`}>
-              {room.status === "maintenance" ? "ปิดซ่อมบำรุง" : room.status === "storage" ? "ห้องเก็บของ" : `${residents.length} / ${room.capacity} คน`}
-            </span>
-         </div>
+      <div className="mt-2 grid w-full grid-cols-3 gap-1 text-slate-800">
+        <div><span className="flex items-center gap-1 text-[11px] font-bold tabular-nums"><Users className="h-3.5 w-3.5" />{residents.length}</span><span className="text-[8px] text-slate-500">ผู้พัก (คน)</span></div>
+        <div><span className="block text-[11px] font-bold tabular-nums">{room.capacity}</span><span className="text-[8px] text-slate-500">ความจุ (คน)</span></div>
+        <div><span className="block text-[11px] font-bold tabular-nums">{unavailable ? "—" : Math.max(0, room.capacity - residents.length)}</span><span className="text-[8px] text-slate-500">ที่ว่าง</span></div>
       </div>
-
-      {/* Residents names – compact */}
-      <div className="mt-1 flex w-full flex-wrap gap-0.5">
-        {room.status === "maintenance" ? (
-          <span className="text-[8px] text-gray-500/70 italic">-</span>
-        ) : room.status === "storage" ? (
-          <span className="text-[8px] text-gray-500/70 italic">-</span>
-        ) : displayResidents.length > 0 ? (
-          displayResidents.map((r, i) => (
-            <span key={i} className={`truncate max-w-full rounded px-1 py-px text-[8px] font-semibold leading-none bg-white/60 ${cfg.textColor}`}>
-              {r.firstName} {r.lastName ? `${r.lastName.charAt(0)}.` : ""}
-            </span>
-          ))
-        ) : (
-          <span className={`text-[8px] font-medium opacity-50 italic ${cfg.textColor}`}>ว่าง</span>
-        )}
-        {residents.length > 3 && <span className={`text-[8px] opacity-50 ${cfg.textColor}`}>+{residents.length - 3}</span>}
+      <div className="mt-1 flex min-h-4 w-full flex-wrap content-start gap-1">
+        {unavailable ? <span className="text-[8px] text-slate-500">{compStatus === "maintenance" ? "ปิดซ่อมบำรุง" : "ห้องเก็บของ"}</span> : residents.length ? <>
+          {residents.slice(0, 3).map(r => <span key={r.id} className="max-w-full truncate rounded-md bg-white/60 px-1 py-px text-[8px] font-medium text-slate-600">{r.firstName} {r.lastName ? `${r.lastName.charAt(0)}.` : ""}</span>)}
+          {residents.length > 3 && <span className="text-[8px] text-slate-500">+{residents.length - 3} คน</span>}
+        </> : <span className="text-[8px] text-slate-500">ยังไม่มีผู้พักอาศัย</span>}
       </div>
-    </button>
+      <span className="mt-auto flex w-full items-center gap-1.5 pt-1.5">
+        <span className="flex flex-1 items-center justify-center rounded-full border border-white bg-white/30 px-2 py-1 text-[9px] font-semibold text-slate-700 shadow-sm transition group-hover:bg-white/70">ดูรายละเอียดห้อง</span>
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/90 text-slate-600"><ChevronRight className="h-3 w-3" /></span>
+      </span>
+    </div>
   );
 }
-
 
 function AddRoomModal({ zones, defaultZoneId, onClose }: { zones: Zone[]; defaultZoneId: string; onClose: () => void }) {
   const [zoneId, setZoneId] = useState(defaultZoneId === "all" ? (zones[0]?.id ?? "") : defaultZoneId);
@@ -1174,6 +1150,7 @@ export default function RoomsPage() {
   }, [selectedCamp]);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [residentSearch, setResidentSearch] = useState("");
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [roomToEdit, setRoomToEdit] = useState<Room | null>(null);
   const [showAddRoom, setShowAddRoom] = useState(false);
@@ -1191,7 +1168,21 @@ export default function RoomsPage() {
     return { ...r, computedStatus: getComputedStatus(r, occ) };
   });
 
-  const filteredRooms = statusFilter === "all" ? enrichedRooms : enrichedRooms.filter((r) => r.computedStatus === statusFilter);
+  const searchKeyword = residentSearch.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const matchingRoomIds = new Set(workers.filter((worker) =>
+    `${worker.firstName} ${worker.lastName}`.trim().replace(/\s+/g, " ").toLocaleLowerCase().includes(searchKeyword)
+  ).map((worker) => worker.roomId));
+  const filteredRooms = enrichedRooms.filter((room) =>
+    (statusFilter === "all" || room.computedStatus === statusFilter) &&
+    (!searchKeyword || matchingRoomIds.has(room.id) || room.number.toLocaleLowerCase().includes(searchKeyword))
+  );
+  const roomGroups = availableZones
+    .map((zone) => ({
+      zone,
+      campName: camps.find((camp) => camp.id === zone.campId)?.name,
+      rooms: filteredRooms.filter((room) => room.zoneId === zone.id),
+    }))
+    .filter((group) => group.rooms.length > 0);
   const activeRoom = activeRoomId ? rooms.find((r) => r.id === activeRoomId) ?? null : null;
   const counts = { 
     empty: enrichedRooms.filter((r) => r.computedStatus === "empty").length, 
@@ -1289,6 +1280,22 @@ export default function RoomsPage() {
           </div>
         </div>
         
+        <div className="mb-4">
+          <label htmlFor="resident-search" className="mb-1.5 block text-xs font-semibold text-gray-600">ค้นหาชื่อผู้พักอาศัยหรือเลขห้อง</label>
+          <div className="relative w-full sm:max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              id="resident-search"
+              type="search"
+              value={residentSearch}
+              onChange={(e) => setResidentSearch(e.target.value)}
+              placeholder="พิมพ์ชื่อ นามสกุล หรือเลขห้อง..."
+              className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none transition hover:border-gray-400 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {searchKeyword && <p role="status" className="mt-2 text-xs text-gray-500">พบ {filteredRooms.length} ห้องที่ตรงกับคำค้นหาในตัวกรองที่เลือก</p>}
+        </div>
+
         {viewMode === "grid" && (
           <div className="mb-4 flex flex-wrap items-center gap-4">
             {(["empty", "partial", "full", "maintenance", "storage"] as RoomStatus[]).map((s) => (
@@ -1301,10 +1308,24 @@ export default function RoomsPage() {
         {loading ? (
           <div className="flex min-h-48 flex-col items-center justify-center gap-2"><Loader2 className="h-8 w-8 animate-spin text-blue-400" /><p className="text-sm text-gray-400">โหลดข้อมูล...</p></div>
         ) : filteredRooms.length === 0 ? (
-          <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white text-center"><Users className="h-8 w-8 text-gray-300" /><p className="mt-2 text-sm text-gray-400">ไม่พบห้องที่ตรงกับตัวกรองที่เลือก</p></div>
+          <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white text-center"><Users className="h-8 w-8 text-gray-300" /><p className="mt-2 text-sm text-gray-400">{searchKeyword ? "ไม่พบชื่อผู้พักอาศัยหรือเลขห้องที่ตรงกับคำค้นหาในตัวกรองที่เลือก" : "ไม่พบห้องที่ตรงกับตัวกรองที่เลือก"}</p></div>
         ) : viewMode === "grid" ? (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
-            {filteredRooms.map((room) => <RoomCard key={room.id} workers={workers} room={room} onClick={() => setActiveRoomId(room.id)} canEdit={canEditRoom} onEdit={() => setRoomToEdit(room)} onDelete={() => handleDeleteRoom(room)} />)}
+          <div className="space-y-10">
+            {roomGroups.map(({ zone, campName, rooms: zoneRooms }) => (
+              <section key={zone.id} aria-labelledby={`room-zone-${zone.id}`}>
+                <div className="mb-4 flex items-center gap-3 border-b border-slate-200 pb-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700"><Building2 className="h-5 w-5" /></span>
+                  <div>
+                    <h2 id={`room-zone-${zone.id}`} className="text-base font-bold text-slate-800">{zone.label}</h2>
+                    {selectedCampId === "all" && campName && <p className="text-xs text-slate-500">{campName}</p>}
+                  </div>
+                  <span className="ml-auto rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold tabular-nums text-slate-600">{zoneRooms.length} ห้อง</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+                  {zoneRooms.map((room) => <RoomCard key={room.id} workers={workers} room={room} onClick={() => setActiveRoomId(room.id)} canEdit={canEditRoom} onEdit={() => setRoomToEdit(room)} onDelete={() => handleDeleteRoom(room)} />)}
+                </div>
+              </section>
+            ))}
           </div>
         ) : (
           <CustomSiteMap rooms={filteredRooms} workers={workers} onRoomClick={(room) => setActiveRoomId(room.id)} />
@@ -1317,3 +1338,15 @@ export default function RoomsPage() {
     </>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+

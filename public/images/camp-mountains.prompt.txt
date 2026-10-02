@@ -1,0 +1,7 @@
+Asset: camp-mountains.png
+Generated using: built-in imagegen tool
+Purpose: decorative artwork for CMG Camp Manager Dashboard and LoginPage.
+This is illustrative artwork, not a photograph of a CMG camp.
+
+Final prompt:
+Use case: stylized-concept. Asset type: scenic artwork for a light pastel camp management dashboard hero. Primary request: create a beautifully detailed dreamy alpine mountain landscape matching the attached UI reference's scenic purple mountains. Landscape aspect ratio about 3:2. Composition: a tall jagged indigo rock mountain rising at right-center, small layered lavender mountains in background, soft pale-blue cyan sky and a faint pink glow toward the upper left, serene pale turquoise lake between foreground mountains. Mountains are photorealistic rock textures gently stylized like premium 3D editorial artwork, lavender snow peaks, deep periwinkle purple shadows, icy-blue highlights, atmospheric mist at base, no heavy black shadows. Mood: airy ethereal clean, abundant pastel light. No text, no UI, no logos, no buildings or people. Keep sky at top 35 percent, landscape filling rest. Intended to be cropped inside a circle and an arch in a white dashboard UI.

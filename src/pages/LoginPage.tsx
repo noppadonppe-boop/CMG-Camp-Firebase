@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Loader2, Mail, Lock, AlertCircle } from "lucide-react";
+import { Loader2, Mail, Lock, AlertCircle, House, ShieldCheck, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { loginWithEmail, loginWithGoogle } from "@/lib/auth-service";
 
@@ -13,9 +13,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-  const from = (location.state as any)?.from?.pathname || "/dashboard";
-  const stateError = (location.state as any)?.error;
+  const loginState = location.state as { from?: { pathname?: string }; error?: string } | null;
+  const from = loginState?.from?.pathname || "/";
+  const stateError = loginState?.error;
 
   useEffect(() => {
     if (stateError) setError(stateError);
@@ -72,19 +74,35 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg">
-            <span className="text-2xl font-bold text-white">CMG</span>
+    <div className="auth-page">
+      <div className="login-shell">
+        <header className="flex items-center justify-between gap-4">
+          <div className="login-brand">
+            <span className="brand-mark"><House className="h-5 w-5" strokeWidth={1.8} /></span>
+            <div><p className="text-sm font-bold tracking-tight">CMG <span className="font-normal text-[#77778d]">Camp Manager</span></p><p className="mt-0.5 text-[9px] tracking-[.16em] text-[#9c98ae]">A BETTER PLACE TO LIVE</p></div>
           </div>
-          <h1 className="text-3xl font-bold text-gray-800">เข้าสู่ระบบ</h1>
-          <p className="mt-2 text-sm text-gray-500">CMG Camp Manager</p>
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-xl">
+          <Link to="/register" className="rounded-full border border-[#e1dcf1] bg-white/70 px-4 py-2 text-xs font-medium text-[#7356c9] transition hover:bg-[#eee8ff]">สร้างบัญชี</Link>
+        </header>
+        <main className="login-grid">
+          <section className="login-intro" aria-label="CMG Camp Manager">
+            <p className="login-eyebrow">YOUR CAMP, CONNECTED.</p>
+            <h1 className="login-title">ดูแลทุกการพักอาศัย<br /><span>ให้เป็นเรื่องง่าย</span></h1>
+            <p className="login-description">เชื่อมทุกงานของแคมป์ไว้ในที่เดียว ตั้งแต่ผู้อยู่อาศัย ห้องพัก สุขอนามัย ไปจนถึงการเงิน</p>
+            <div className="login-landscape" aria-hidden="true">
+              <div className="login-orbit" />
+              <div className="login-art"><img src="/images/camp-mountains.png" alt="" fetchPriority="high" /></div>
+              <div className="login-art-card">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f0ebff] text-[#8063d3]"><ShieldCheck className="h-5 w-5" /></span>
+                <div><p className="text-xs font-semibold text-[#36334c]">จัดการอย่างเป็นระบบ</p><p className="mt-1 text-[10px] text-[#9290a4]">ดูแลแคมป์ได้ในทุกวัน</p></div>
+              </div>
+            </div>
+          </section>
+          <section className="login-form-card" aria-labelledby="login-heading">
+            <span className="mb-5 inline-flex items-center gap-1.5 rounded-full bg-[#f2edff] px-3 py-1.5 text-[10px] font-medium text-[#8568ce]"><span className="h-1.5 w-1.5 rounded-full bg-[#9b7ce5]" />CMG WORKSPACE</span>
+            <h2 id="login-heading" className="text-2xl font-bold tracking-tight text-[#292b42]">ยินดีต้อนรับกลับ</h2>
+            <p className="mb-7 mt-2 text-xs leading-relaxed text-[#9794a8]">เข้าสู่ระบบเพื่อเริ่มดูแลแคมป์ของคุณ</p>
           {error && (
-            <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <div role="alert" className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
               <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />
               <p className="text-sm text-red-700">{error}</p>
             </div>
@@ -92,42 +110,48 @@ export default function LoginPage() {
 
           <form onSubmit={handleEmailLogin} className="space-y-5">
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">อีเมล</label>
+              <label htmlFor="login-email" className="mb-2 block text-xs font-medium text-[#5e5c72]">อีเมล</label>
               <div className="relative">
                 <Mail className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
                 <input
                   type="email"
+                  id="login-email"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full rounded-xl border border-[#e8e5f0] bg-[#fcfbff] py-3 pl-11 pr-4 text-sm outline-none transition placeholder:text-[#b3afc1] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10"
                   placeholder="your@email.com"
                 />
               </div>
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">รหัสผ่าน</label>
+              <label htmlFor="login-password" className="mb-2 block text-xs font-medium text-[#5e5c72]">รหัสผ่าน</label>
               <div className="relative">
                 <Lock className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
+                  id="login-password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full rounded-xl border border-[#e8e5f0] bg-[#fcfbff] py-3 pl-11 pr-11 text-sm outline-none transition placeholder:text-[#b3afc1] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10"
                   placeholder="••••••••"
                 />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"} aria-pressed={showPassword} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-[#aaa5ba] hover:text-blue-600">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
               </div>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+              className="auth-primary flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold text-white transition disabled:opacity-60"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               เข้าสู่ระบบ
+              {!loading && <ArrowRight className="h-4 w-4" />}
             </button>
           </form>
 
@@ -140,7 +164,7 @@ export default function LoginPage() {
           <button
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-3 rounded-full border border-[#e8e5f0] bg-white py-3 text-xs font-medium text-[#666176] transition hover:bg-[#faf8ff] disabled:opacity-60"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -151,13 +175,15 @@ export default function LoginPage() {
             เข้าสู่ระบบด้วย Google
           </button>
 
-          <p className="mt-6 text-center text-sm text-gray-500">
+          <p className="mt-6 text-center text-xs text-[#9691a7]">
             ยังไม่มีบัญชี?{" "}
             <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-700">
               ลงทะเบียนที่นี่
             </Link>
           </p>
-        </div>
+          </section>
+        </main>
+        <footer className="auth-footer"><span>CMG Camp Manager · ระบบบริหารจัดการแคมป์</span><span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-[#9d8cce]" />เข้าถึงข้อมูลตามสิทธิ์ของคุณ</span></footer>
       </div>
     </div>
   );

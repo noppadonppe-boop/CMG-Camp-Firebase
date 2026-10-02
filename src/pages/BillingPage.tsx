@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Droplets, Zap, Wrench, ChevronDown, Loader2, TrendingUp, Building2 } from "lucide-react";
+import { Droplets, Zap, Wrench, ChevronDown, Loader2, TrendingUp, Building2, Users, CheckCircle2, AlertCircle } from "lucide-react";
 import { useRooms, useZones, type Room } from "@/lib/db/useRooms";
 import { useWorkers } from "@/lib/db/useWorkers";
 import { useCamps } from "@/lib/db/useCamps";
@@ -125,21 +125,26 @@ function RoomBillingRow({ room, occupants, elec, maint }: {
   }
 
   return (
-    <tr className="border-b border-gray-50 hover:bg-gray-50/60 transition">
+    <tr className="group border-b border-slate-100 odd:bg-white even:bg-slate-50/50 hover:bg-blue-50/60 transition-colors">
       <td className="py-3 pl-4 pr-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600">{room.number.slice(0, 2)}</div>
-          <span className="text-sm font-bold text-gray-800">{room.number}</span>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-100 group-hover:bg-blue-100"><Building2 className="h-5 w-5" /></div>
+          <div>
+            <span className="text-sm font-bold text-slate-800">{room.number}</span>
+            <span className="mt-1 flex items-center gap-1 text-[11px] font-medium text-slate-500">
+              {occupants === 0 ? "ไม่มีผู้พัก" : !elec || !maint ? <><AlertCircle className="h-3 w-3 text-amber-600" />ข้อมูลยังไม่ครบ</> : <><CheckCircle2 className="h-3 w-3 text-emerald-600" />ข้อมูลครบ</>}
+            </span>
+          </div>
         </div>
       </td>
       <td className="py-3 px-2 text-center">
-        <span className="inline-flex items-center justify-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-bold text-blue-700">{occupants}</span>
+        <span className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-600"><Users className="h-3.5 w-3.5" />{occupants} คน</span>
       </td>
-      <td className="py-3 px-2 text-right text-xs font-semibold text-blue-600 tabular-nums">{occupants > 0 ? fmtBaht(water) : "–"}</td>
-      <td className="py-3 px-2 text-right text-xs font-semibold tabular-nums">
-        {elec ? <span className="text-amber-600">{fmtBaht(electricity)}</span> : <span className="text-gray-300">ไม่มีข้อมูล</span>}
+      <td className="py-4 px-4 text-right text-sm font-semibold text-blue-700 tabular-nums">{occupants > 0 ? fmtBaht(water) : "–"}</td>
+      <td className="py-4 px-4 text-right text-sm font-semibold tabular-nums">
+        {elec ? <span className="text-amber-700">{fmtBaht(electricity)}</span> : <span className="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700">ไม่มีข้อมูล</span>}
       </td>
-      <td className="py-3 px-2 text-right text-xs font-semibold tabular-nums">
+      <td className="py-4 px-4 text-right text-sm font-semibold tabular-nums">
         {maint ? (
           maint.charged ? (
             <span className="text-violet-600">{fmtBaht(maintenance)}</span>
@@ -147,11 +152,11 @@ function RoomBillingRow({ room, occupants, elec, maint }: {
             <span className="text-gray-400">ไม่เก็บ</span>
           )
         ) : (
-          <span className="text-gray-300">ไม่มีข้อมูล</span>
+          <span className="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700">ไม่มีข้อมูล</span>
         )}
       </td>
-      <td className="py-3 pl-2 pr-4 text-right">
-        <span className="text-sm font-bold text-gray-800 tabular-nums">{fmtBaht(total)} ฿</span>
+      <td className="bg-blue-50/40 py-4 pl-4 pr-5 text-right">
+        <span className="text-base font-bold text-slate-900 tabular-nums">{fmtBaht(total)} <span className="text-xs font-medium text-slate-500">฿</span></span>
       </td>
     </tr>
   );
@@ -251,13 +256,13 @@ export default function BillingPage() {
         <>
           {/* ── KPI Cards ── */}
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-blue-800 bg-gradient-to-br from-slate-900 to-blue-900 p-4 shadow-sm">
               <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="h-4 w-4 text-gray-400" />
-                <span className="text-xs font-medium text-gray-400">ยอดรวมทั้งหมด</span>
+                <TrendingUp className="h-4 w-4 text-blue-200" />
+                <span className="text-xs font-medium text-blue-100">ยอดรวมทั้งหมด</span>
               </div>
-              <p className="text-xl font-bold text-gray-800 tabular-nums">{fmtBaht(grandTotal)} <span className="text-sm font-normal text-gray-400">฿</span></p>
-              <p className="mt-0.5 text-xs text-gray-400">{occupiedRooms} ห้องที่มีผู้พัก</p>
+              <p className="text-xl font-bold text-white tabular-nums">{fmtBaht(grandTotal)} <span className="text-sm font-normal text-blue-200">฿</span></p>
+              <p className="mt-0.5 text-xs text-blue-200">{occupiedRooms} ห้องที่มีผู้พัก</p>
             </div>
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
               <div className="flex items-center gap-2 mb-2">
@@ -305,14 +310,13 @@ export default function BillingPage() {
           )}
 
           {/* ── Room Table ── */}
-          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-blue-50 via-slate-50 to-white px-5 py-5 border-b border-slate-200">
               <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-gray-400" />
-                <span className="text-sm font-bold text-gray-700">รายละเอียดรายห้อง</span>
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">{filteredRooms.length}</span>
+                <div className="rounded-xl bg-white p-2.5 text-blue-600 shadow-sm ring-1 ring-blue-100"><Building2 className="h-5 w-5" /></div>
+                <div><span className="text-base font-bold text-slate-800">รายละเอียดรายห้อง</span><p className="mt-0.5 text-xs text-slate-500">{filteredRooms.length} ห้อง · จำนวนเงินเป็นบาท</p></div>
               </div>
-              <span className="text-xs text-gray-400 font-medium">{fmtMonthLabel(selectedMonth)}</span>
+              <span className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs text-blue-700 font-semibold">{fmtMonthLabel(selectedMonth)}</span>
             </div>
 
             {filteredRooms.length === 0 ? (
@@ -322,21 +326,22 @@ export default function BillingPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[680px]">
+                  <caption className="sr-only">รายละเอียดค่าใช้จ่ายรายห้อง {fmtMonthLabel(selectedMonth)} จำนวนเงินเป็นบาท</caption>
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/80">
-                      <th className="py-2.5 pl-4 pr-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">ห้อง</th>
-                      <th className="py-2.5 px-2 text-center text-[10px] font-bold uppercase tracking-wider text-gray-400">ผู้พัก</th>
-                      <th className="py-2.5 px-2 text-right text-[10px] font-bold uppercase tracking-wider text-blue-400">
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                      <th className="py-2.5 pl-4 pr-2 text-left text-xs font-semibold text-slate-600">ห้อง</th>
+                      <th className="py-2.5 px-2 text-center text-xs font-semibold text-slate-600">ผู้พัก</th>
+                      <th className="py-3 px-4 text-right text-xs font-semibold text-blue-700">
                         <span className="flex items-center justify-end gap-1"><Droplets className="h-3 w-3" />น้ำ</span>
                       </th>
-                      <th className="py-2.5 px-2 text-right text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                      <th className="py-3 px-4 text-right text-xs font-semibold text-amber-700">
                         <span className="flex items-center justify-end gap-1"><Zap className="h-3 w-3" />ไฟ</span>
                       </th>
-                      <th className="py-2.5 px-2 text-right text-[10px] font-bold uppercase tracking-wider text-violet-400">
+                      <th className="py-3 px-4 text-right text-xs font-semibold text-violet-700">
                         <span className="flex items-center justify-end gap-1"><Wrench className="h-3 w-3" />บำรุง</span>
                       </th>
-                      <th className="py-2.5 pl-2 pr-4 text-right text-[10px] font-bold uppercase tracking-wider text-gray-400">รวม</th>
+                      <th className="py-2.5 pl-2 pr-4 text-right text-xs font-semibold text-slate-600">รวม</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -345,11 +350,11 @@ export default function BillingPage() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-gray-200 bg-gray-50">
+                    <tr className="border-t-2 border-blue-100 bg-blue-50/60">
                       <td colSpan={2} className="py-3 pl-4 pr-2 text-xs font-bold text-gray-600">รวมทั้งหมด</td>
-                      <td className="py-3 px-2 text-right text-xs font-bold text-blue-700 tabular-nums">{fmtBaht(totalWater)}</td>
-                      <td className="py-3 px-2 text-right text-xs font-bold text-amber-700 tabular-nums">{fmtBaht(totalElec)}</td>
-                      <td className="py-3 px-2 text-right text-xs font-bold text-violet-700 tabular-nums">{fmtBaht(totalMaint)}</td>
+                      <td className="py-4 px-4 text-right text-sm font-bold text-blue-700 tabular-nums">{fmtBaht(totalWater)}</td>
+                      <td className="py-4 px-4 text-right text-sm font-bold text-amber-700 tabular-nums">{fmtBaht(totalElec)}</td>
+                      <td className="py-4 px-4 text-right text-sm font-bold text-violet-700 tabular-nums">{fmtBaht(totalMaint)}</td>
                       <td className="py-3 pl-2 pr-4 text-right text-sm font-extrabold text-gray-800 tabular-nums">{fmtBaht(grandTotal)} ฿</td>
                     </tr>
                   </tfoot>

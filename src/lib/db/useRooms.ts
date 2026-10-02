@@ -42,6 +42,7 @@ export interface Zone {
 
 const ROOT = "cmg-camp-manager";
 const ROOT_DOC = "root";
+const roomNumberCollator = new Intl.Collator("th", { numeric: true, sensitivity: "base" });
 
 export function useZones() {
   const [zones, setZones] = useState<Zone[]>([]);
@@ -97,7 +98,11 @@ export function useRooms() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Room)));
+        setRooms(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() } as Room))
+            .sort((a, b) => roomNumberCollator.compare(a.number, b.number))
+        );
         setLoading(false);
       },
       () => setLoading(false)

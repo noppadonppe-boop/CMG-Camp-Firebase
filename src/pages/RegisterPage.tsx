@@ -22,7 +22,7 @@ export default function RegisterPage() {
     if (userProfile.status === "pending") {
       navigate("/pending", { replace: true });
     } else if (userProfile.status === "approved") {
-      navigate("/dashboard", { replace: true });
+      navigate("/", { replace: true });
     }
   }, [userProfile, navigate]);
 
@@ -60,7 +60,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4 py-12">
+    <div className="auth-page flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg">
