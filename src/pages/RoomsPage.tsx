@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package, Lock, LockOpen, ShieldAlert, Search } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package, Lock, LockOpen, ShieldAlert, Search, RotateCw, Save, GripVertical, Move, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import {
   useRooms,
   useZones,
@@ -17,6 +17,7 @@ import {
 import { useCamps } from "@/lib/db/useCamps";
 import { useCamp } from "@/context/CampContext";
 import { useWorkers, updateWorker, type Worker } from "@/lib/db/useWorkers";
+import { saveRoomLayout, useRoomLayout, type RoomBlockLayout, type RoomLayoutBlock, type RoomLayoutPosition, type RoomLayoutShape } from "@/lib/db/useRoomLayouts";
 import { useAuth } from "@/context/AuthContext";
 import { USER_ROLES, type UserRole } from "@/types/auth";
 import {
@@ -814,6 +815,673 @@ function EditRoomModal({ room, zones, workers, onClose }: { room: Room; zones: Z
   );
 }
 
+type LayoutRoom = Room & { computedStatus: RoomStatus };
+
+type ResizeDirection = { key: string; x: -1 | 0 | 1; y: -1 | 0 | 1; position: string; cursor: string };
+
+const BLOCK_RESIZE_HANDLES: ResizeDirection[] = [
+  { key: "top-left", x: -1, y: -1, position: "-left-1.5 -top-1.5", cursor: "cursor-nwse-resize" },
+  { key: "top", x: 0, y: -1, position: "left-1/2 -top-1.5 -translate-x-1/2", cursor: "cursor-ns-resize" },
+  { key: "top-right", x: 1, y: -1, position: "-right-1.5 -top-1.5", cursor: "cursor-nesw-resize" },
+  { key: "right", x: 1, y: 0, position: "-right-1.5 top-1/2 -translate-y-1/2", cursor: "cursor-ew-resize" },
+  { key: "bottom-right", x: 1, y: 1, position: "-right-1.5 -bottom-1.5", cursor: "cursor-nwse-resize" },
+  { key: "bottom", x: 0, y: 1, position: "left-1/2 -bottom-1.5 -translate-x-1/2", cursor: "cursor-ns-resize" },
+  { key: "bottom-left", x: -1, y: 1, position: "-left-1.5 -bottom-1.5", cursor: "cursor-nesw-resize" },
+  { key: "left", x: -1, y: 0, position: "-left-1.5 top-1/2 -translate-y-1/2", cursor: "cursor-ew-resize" },
+];
+
+function rotatePoint(point: { x: number; y: number }, degrees: number) {
+  const radians = degrees * Math.PI / 180;
+  return {
+    x: point.x * Math.cos(radians) - point.y * Math.sin(radians),
+    y: point.x * Math.sin(radians) + point.y * Math.cos(radians),
+  };
+}
+
+const BLOCK_HEADER_HEIGHT = 56;
+const CANVAS_WIDTH = 1080;
+const CANVAS_HEIGHT = 680;
+const ROOM_DEFAULT_WIDTH = 184;
+const ROOM_DEFAULT_HEIGHT = 72;
+const SNAP_DISTANCE = 14;
+const ROOM_SNAP_GAP = 8;
+
+function getFallbackRoomPosition(block: RoomLayoutBlock, index: number): RoomLayoutPosition {
+  const bodyHeight = Math.max(100, block.height - BLOCK_HEADER_HEIGHT);
+  const compact = block.layout === "compact";
+  const width = Math.min(compact ? 140 : ROOM_DEFAULT_WIDTH, Math.max(120, block.width - 16));
+  const height = compact ? 56 : ROOM_DEFAULT_HEIGHT;
+  const gap = 8;
+  const columns = block.layout === "rows" ? 1 : block.layout === "columns" ? 2 : compact ? 4 : block.roomIds.length > 8 ? 4 : block.roomIds.length > 4 ? 3 : 2;
+  const x = 8 + (index % columns) * (width + gap);
+  const y = 8 + Math.floor(index / columns) * (height + gap);
+  return {
+    x: Math.min(Math.max(8, x), Math.max(8, block.width - width - 8)),
+    y: Math.min(Math.max(8, y), Math.max(8, bodyHeight - height - 8)),
+    width,
+    height,
+  };
+}
+
+function getRoomPosition(block: RoomLayoutBlock, roomId: string, index: number): RoomLayoutPosition {
+  return block.roomPositions?.[roomId] ?? getFallbackRoomPosition(block, index);
+}
+
+function rectanglesOverlap(a: RoomLayoutPosition, b: RoomLayoutPosition) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function closestSnap(value: number, candidates: number[]) {
+  const candidate = candidates.reduce<{ value: number; distance: number } | null>((closest, next) => {
+    const distance = Math.abs(next - value);
+    return distance <= SNAP_DISTANCE && (!closest || distance < closest.distance) ? { value: next, distance } : closest;
+  }, null);
+  return candidate?.value ?? value;
+}
+
+function snapRoomPosition(block: RoomLayoutBlock, roomId: string, proposed: RoomLayoutPosition): RoomLayoutPosition | null {
+  const bodyHeight = Math.max(100, block.height - BLOCK_HEADER_HEIGHT);
+  let x = Math.max(8, Math.min(block.width - proposed.width - 8, proposed.x));
+  let y = Math.max(8, Math.min(bodyHeight - proposed.height - 8, proposed.y));
+  const obstacles: RoomLayoutPosition[] = [
+    ...block.roomIds.filter((id) => id !== roomId).map((id, index) => getRoomPosition(block, id, index)),
+    ...(block.shapes ?? []),
+  ];
+
+  const xCandidates = [8, block.width - proposed.width - 8];
+  const yCandidates = [8, bodyHeight - proposed.height - 8];
+  for (const obstacle of obstacles) {
+    const verticalNear = y < obstacle.y + obstacle.height + SNAP_DISTANCE && y + proposed.height > obstacle.y - SNAP_DISTANCE;
+    const horizontalNear = x < obstacle.x + obstacle.width + SNAP_DISTANCE && x + proposed.width > obstacle.x - SNAP_DISTANCE;
+    if (verticalNear) {
+      // ห้องที่อยู่ด้านข้างกันจะเว้นช่องไฟเท่ากัน และช่วยจัดแนวบน/ล่างให้ตรงกัน
+      xCandidates.push(obstacle.x - proposed.width - ROOM_SNAP_GAP, obstacle.x + obstacle.width + ROOM_SNAP_GAP);
+      yCandidates.push(obstacle.y, obstacle.y + obstacle.height - proposed.height);
+    }
+    if (horizontalNear) {
+      // ห้องที่อยู่บน/ล่างกันจะเว้นช่องไฟเท่ากัน และช่วยจัดแนวซ้าย/ขวาให้ตรงกัน
+      yCandidates.push(obstacle.y - proposed.height - ROOM_SNAP_GAP, obstacle.y + obstacle.height + ROOM_SNAP_GAP);
+      xCandidates.push(obstacle.x, obstacle.x + obstacle.width - proposed.width);
+    }
+  }
+
+  x = Math.max(8, Math.min(block.width - proposed.width - 8, closestSnap(x, xCandidates)));
+  y = Math.max(8, Math.min(bodyHeight - proposed.height - 8, closestSnap(y, yCandidates)));
+  const result = { ...proposed, x, y };
+  return (block.shapes ?? []).some((shape) => rectanglesOverlap(result, shape)) ? null : result;
+}
+
+function newLayoutBlock(id: string, name: string, index: number): RoomLayoutBlock {
+  return {
+    id,
+    name,
+    x: 36 + (index % 2) * 380,
+    y: 36 + Math.floor(index / 2) * 300,
+    width: 340,
+    height: 250,
+    rotation: 0,
+    layout: "grid",
+    roomIds: [],
+  };
+}
+
+function BlockEditModal({
+  block,
+  onClose,
+  onUpdate,
+  onAddShape,
+  onUpdateShape,
+  onDeleteShape,
+}: {
+  block: RoomLayoutBlock;
+  onClose: () => void;
+  onUpdate: (patch: Partial<RoomLayoutBlock>) => void;
+  onAddShape: () => void;
+  onUpdateShape: (shapeId: string, patch: Partial<RoomLayoutShape>) => void;
+  onDeleteShape: (shapeId: string) => void;
+}) {
+  const updateNumber = (shapeId: string, field: keyof Pick<RoomLayoutShape, "x" | "y" | "width" | "height">, value: string) => {
+    const number = Number(value);
+    onUpdateShape(shapeId, { [field]: Number.isFinite(number) ? Math.max(0, number) : 0 });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-labelledby="block-edit-title" className="relative flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div><h2 id="block-edit-title" className="text-base font-extrabold text-slate-800">แก้ไข Block</h2><p className="mt-0.5 text-[11px] text-slate-500">เพิ่มพื้นที่ Shape ที่ห้ามวางห้องทับ</p></div>
+          <button type="button" onClick={onClose} aria-label="ปิดหน้าต่างแก้ไข Block" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>
+        </div>
+
+        <div className="space-y-4 overflow-y-auto p-5">
+          <div className="grid gap-3 sm:grid-cols-[1fr_170px]">
+            <label className="block"><span className="mb-1 block text-[11px] font-semibold text-slate-600">ชื่อ Block</span><input value={block.name} onChange={(event) => onUpdate({ name: event.target.value })} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
+            <label className="block"><span className="mb-1 block text-[11px] font-semibold text-slate-600">รูปแบบห้อง</span><select value={block.layout} onChange={(event) => onUpdate({ layout: event.target.value as RoomBlockLayout })} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400"><option value="grid">ตาราง</option><option value="rows">แถว</option><option value="columns">2 คอลัมน์</option><option value="compact">กระชับ</option></select></label>
+          </div>
+
+          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs leading-5 text-amber-800">Shape จะเป็นพื้นที่กีดขวาง ห้องจะไม่สามารถวางทับได้ หากวางห้องลงบน Shape ระบบจะไม่รับตำแหน่งนั้น</div>
+
+          <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-800">Shape ภายใน Block</h3><p className="mt-0.5 text-[10px] text-slate-400">ตั้งชื่อและกำหนดตำแหน่ง/ขนาดของพื้นที่ได้</p></div><button type="button" onClick={onAddShape} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700"><Plus className="h-3.5 w-3.5" /> เพิ่ม Shape</button></div>
+
+          {(block.shapes ?? []).length > 0 ? <div className="space-y-3">{(block.shapes ?? []).map((shape) => <div key={shape.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-3 flex items-center gap-2"><input value={shape.name} onChange={(event) => onUpdateShape(shape.id, { name: event.target.value })} aria-label="ชื่อ Shape" className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm font-semibold outline-none focus:border-blue-400" /><button type="button" onClick={() => onDeleteShape(shape.id)} aria-label={`ลบ ${shape.name}`} className="rounded-lg p-2 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(["x", "y", "width", "height"] as const).map((field) => <label key={field} className="block"><span className="mb-1 block text-[10px] font-semibold uppercase text-slate-500">{field}</span><input type="number" min={0} value={shape[field]} onChange={(event) => updateNumber(shape.id, field, event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs outline-none focus:border-blue-400" /></label>)}
+            </div>
+          </div>)}</div> : <div className="rounded-xl border-2 border-dashed border-slate-200 px-4 py-8 text-center text-xs text-slate-400">ยังไม่มี Shape · กด “เพิ่ม Shape” เพื่อสร้างพื้นที่กีดขวาง</div>}
+        </div>
+
+        <div className="flex justify-end border-t border-slate-100 px-5 py-3"><button type="button" onClick={onClose} className="rounded-lg bg-slate-800 px-4 py-2 text-xs font-bold text-white hover:bg-slate-900">เสร็จสิ้น</button></div>
+      </div>
+    </div>
+  );
+}
+
+function RoomLayoutMap({
+  rooms,
+  workers,
+  onRoomClick,
+  canEdit,
+  scopeKey,
+}: {
+  rooms: LayoutRoom[];
+  workers: Worker[];
+  onRoomClick: (r: Room) => void;
+  canEdit: boolean;
+  scopeKey: string;
+}) {
+  const { layout, loading } = useRoomLayout(scopeKey);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const [draftBlocks, setDraftBlocks] = useState<RoomLayoutBlock[]>([]);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  const [isLayoutEditing, setIsLayoutEditing] = useState(false);
+  const [newBlockName, setNewBlockName] = useState("BLOCK 1");
+  const [draggedRoomId, setDraggedRoomId] = useState<string | null>(null);
+  const [dragOverBlockId, setDragOverBlockId] = useState<string | null>(null);
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [canvasZoom, setCanvasZoom] = useState(1);
+  const [dirty, setDirty] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  useEffect(() => {
+    if (!layout) {
+      setDraftBlocks([]);
+      setSelectedBlockId(null);
+      setSelectedShapeId(null);
+      setIsLayoutEditing(false);
+      setDirty(false);
+      setSaveState("idle");
+      return;
+    }
+    setDraftBlocks(layout.blocks);
+    setSelectedBlockId((current) => current && layout.blocks.some((block) => block.id === current) ? current : layout.blocks[0]?.id ?? null);
+    setSelectedShapeId(null);
+    setIsLayoutEditing(false);
+    setDirty(false);
+    setSaveState("idle");
+  }, [layout, scopeKey]);
+
+  const mutateBlocks = (updater: (blocks: RoomLayoutBlock[]) => RoomLayoutBlock[]) => {
+    if (!canEdit) return;
+    setDraftBlocks((previous) => updater(previous));
+    setIsLayoutEditing(true);
+    setDirty(true);
+    setSaveState("idle");
+  };
+
+  const roomById = new globalThis.Map(rooms.map((room) => [room.id, room]));
+  const assignedRoomIds = new Set(draftBlocks.flatMap((block) => block.roomIds));
+  const unassignedRooms = rooms.filter((room) => !assignedRoomIds.has(room.id));
+
+  const getRoomIdFromTransfer = (event: React.DragEvent<HTMLDivElement>) => {
+    return event.dataTransfer.getData("text/plain") || draggedRoomId;
+  };
+
+  const handleRoomDrop = (event: React.DragEvent<HTMLDivElement>, blockId: string | null) => {
+    event.preventDefault();
+    const roomId = getRoomIdFromTransfer(event);
+    setDragOverBlockId(null);
+    setDraggedRoomId(null);
+    if (!roomId || !canEdit) return;
+
+    const targetBlock = blockId ? draftBlocks.find((block) => block.id === blockId) : null;
+    let droppedPosition: RoomLayoutPosition | null = null;
+    if (targetBlock) {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const point = getCanvasPoint(event.nativeEvent, canvas);
+      const center = { x: targetBlock.x + targetBlock.width / 2, y: targetBlock.y + targetBlock.height / 2 };
+      const localPoint = rotatePoint({ x: point.x - center.x, y: point.y - center.y }, -targetBlock.rotation);
+      const bodyHeight = Math.max(100, targetBlock.height - BLOCK_HEADER_HEIGHT);
+      const roomIndex = Math.max(0, targetBlock.roomIds.indexOf(roomId));
+      const currentPosition = getRoomPosition(targetBlock, roomId, roomIndex);
+      const proposed = {
+        ...currentPosition,
+        x: localPoint.x + targetBlock.width / 2 - currentPosition.width / 2,
+        y: localPoint.y + targetBlock.height / 2 - BLOCK_HEADER_HEIGHT - currentPosition.height / 2,
+      };
+      droppedPosition = snapRoomPosition(targetBlock, roomId, { ...proposed, y: Math.max(8, Math.min(bodyHeight - currentPosition.height - 8, proposed.y)) });
+      if (!droppedPosition) return;
+    }
+
+    mutateBlocks((blocks) => blocks.map((block) => {
+      const roomPositions = { ...(block.roomPositions ?? {}) };
+      if (block.id === blockId && droppedPosition) {
+        return {
+          ...block,
+          roomIds: [...block.roomIds.filter((id) => id !== roomId), roomId],
+          roomPositions: { ...roomPositions, [roomId]: droppedPosition },
+        };
+      }
+      delete roomPositions[roomId];
+      return { ...block, roomIds: block.roomIds.filter((id) => id !== roomId), roomPositions };
+    }));
+  };
+
+  const handleRoomDragStart = (event: React.DragEvent<HTMLDivElement>, roomId: string) => {
+    if (!canEdit) return;
+    setDraggedRoomId(roomId);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", roomId);
+  };
+
+  const handleAddBlock = () => {
+    const fallbackName = `BLOCK ${draftBlocks.length + 1}`;
+    const block = newLayoutBlock(
+      `block-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      newBlockName.trim() || fallbackName,
+      draftBlocks.length,
+    );
+    mutateBlocks((blocks) => [...blocks, block]);
+    setSelectedBlockId(block.id);
+    setNewBlockName(`BLOCK ${draftBlocks.length + 2}`);
+  };
+
+  const updateBlock = (blockId: string, patch: Partial<RoomLayoutBlock>) => {
+    mutateBlocks((blocks) => blocks.map((block) => block.id === blockId ? { ...block, ...patch } : block));
+  };
+
+  const addShape = (blockId: string) => {
+    mutateBlocks((blocks) => blocks.map((block) => {
+      if (block.id !== blockId) return block;
+      const shapeCount = block.shapes?.length ?? 0;
+      const shape: RoomLayoutShape = {
+        id: `shape-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        name: `Shape ${shapeCount + 1}`,
+        x: Math.min(16 + (shapeCount % 2) * 190, Math.max(8, block.width - 176)),
+        y: 16 + Math.floor(shapeCount / 2) * 82,
+        width: 160,
+        height: 56,
+        rotation: 0,
+      };
+      return { ...block, shapes: [...(block.shapes ?? []), shape] };
+    }));
+  };
+
+  const updateShape = (blockId: string, shapeId: string, patch: Partial<RoomLayoutShape>) => {
+    mutateBlocks((blocks) => blocks.map((block) => {
+      if (block.id !== blockId) return block;
+      const bodyHeight = Math.max(100, block.height - BLOCK_HEADER_HEIGHT);
+      return {
+        ...block,
+        shapes: (block.shapes ?? []).map((shape) => {
+          if (shape.id !== shapeId) return shape;
+          const next = { ...shape, ...patch };
+          const width = Math.max(32, Math.min(block.width - 16, next.width));
+          const height = Math.max(24, Math.min(bodyHeight - 16, next.height));
+          return { ...next, width, height, x: Math.max(8, Math.min(block.width - width - 8, next.x)), y: Math.max(8, Math.min(bodyHeight - height - 8, next.y)) };
+        }),
+      };
+    }));
+  };
+
+  const deleteShape = (blockId: string, shapeId: string) => {
+    mutateBlocks((blocks) => blocks.map((block) => block.id === blockId ? {
+      ...block,
+      shapes: (block.shapes ?? []).filter((shape) => shape.id !== shapeId),
+    } : block));
+    if (selectedShapeId === shapeId) setSelectedShapeId(null);
+  };
+
+  const deleteBlock = (blockId: string) => {
+    const block = draftBlocks.find((item) => item.id === blockId);
+    if (!block || !window.confirm(`ลบ ${block.name} หรือไม่? ห้องใน Block จะกลับไปอยู่ในรายการด้านบน`)) return;
+    mutateBlocks((blocks) => blocks.filter((item) => item.id !== blockId));
+    setSelectedBlockId(null);
+    setEditingBlockId(null);
+  };
+
+  const handleBlockPointerDown = (event: React.PointerEvent<HTMLDivElement>, block: RoomLayoutBlock) => {
+    if (!canEdit) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = CANVAS_WIDTH / rect.width || 1;
+    const scaleY = CANVAS_HEIGHT / rect.height || 1;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startBlockX = block.x;
+    const startBlockY = block.y;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextX = Math.max(8, Math.min(CANVAS_WIDTH - block.width - 8, startBlockX + (moveEvent.clientX - startX) * scaleX));
+      const nextY = Math.max(8, Math.min(CANVAS_HEIGHT - block.height - 8, startBlockY + (moveEvent.clientY - startY) * scaleY));
+      setDraftBlocks((blocks) => blocks.map((item) => item.id === block.id ? { ...item, x: nextX, y: nextY } : item));
+      setIsLayoutEditing(true);
+      setDirty(true);
+      setSaveState("idle");
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    setSelectedBlockId(block.id);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  };
+
+  const getCanvasPoint = (event: { clientX: number; clientY: number }, canvas: HTMLDivElement) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = CANVAS_WIDTH / rect.width || 1;
+    const scaleY = CANVAS_HEIGHT / rect.height || 1;
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY,
+    };
+  };
+
+  const handleResizePointerDown = (event: React.PointerEvent<HTMLSpanElement>, block: RoomLayoutBlock, direction: ResizeDirection) => {
+    if (!canEdit) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const startPoint = getCanvasPoint(event.nativeEvent, canvas);
+    const startWidth = block.width;
+    const startHeight = block.height;
+    const startCenter = { x: block.x + startWidth / 2, y: block.y + startHeight / 2 };
+    const minWidth = 240;
+    const minHeight = 170;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const currentPoint = getCanvasPoint(moveEvent, canvas);
+      const worldDelta = { x: currentPoint.x - startPoint.x, y: currentPoint.y - startPoint.y };
+      const localDelta = rotatePoint(worldDelta, -block.rotation);
+      const width = Math.max(minWidth, Math.min(900, startWidth + localDelta.x * direction.x));
+      const height = Math.max(minHeight, Math.min(620, startHeight + localDelta.y * direction.y));
+      const localCenterShift = {
+        x: (width - startWidth) / 2 * direction.x,
+        y: (height - startHeight) / 2 * direction.y,
+      };
+      const worldCenterShift = rotatePoint(localCenterShift, block.rotation);
+      const x = Math.max(8, Math.min(CANVAS_WIDTH - width - 8, startCenter.x + worldCenterShift.x - width / 2));
+      const y = Math.max(8, Math.min(CANVAS_HEIGHT - height - 8, startCenter.y + worldCenterShift.y - height / 2));
+
+      setDraftBlocks((blocks) => blocks.map((item) => item.id === block.id ? { ...item, x, y, width, height } : item));
+      setIsLayoutEditing(true);
+      setDirty(true);
+      setSaveState("idle");
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    setSelectedBlockId(block.id);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  };
+
+  const handleShapeResizePointerDown = (event: React.PointerEvent<HTMLSpanElement>, block: RoomLayoutBlock, shape: RoomLayoutShape, direction: ResizeDirection) => {
+    if (!canEdit) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const startPoint = getCanvasPoint(event.nativeEvent, canvas);
+    const startWidth = shape.width;
+    const startHeight = shape.height;
+    const shapeRotation = shape.rotation ?? 0;
+    const startCenter = { x: shape.x + startWidth / 2, y: BLOCK_HEADER_HEIGHT + shape.y + startHeight / 2 };
+    const bodyHeight = Math.max(100, block.height - BLOCK_HEADER_HEIGHT);
+    const minWidth = 32;
+    const minHeight = 24;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const currentPoint = getCanvasPoint(moveEvent, canvas);
+      const worldDelta = { x: currentPoint.x - startPoint.x, y: currentPoint.y - startPoint.y };
+      const localDelta = rotatePoint(worldDelta, -(block.rotation + shapeRotation));
+      const width = Math.max(minWidth, Math.min(block.width - 16, startWidth + localDelta.x * direction.x));
+      const height = Math.max(minHeight, Math.min(bodyHeight - 16, startHeight + localDelta.y * direction.y));
+      const localCenterShift = {
+        x: (width - startWidth) / 2 * direction.x,
+        y: (height - startHeight) / 2 * direction.y,
+      };
+      const rotatedCenterShift = rotatePoint(localCenterShift, shapeRotation);
+      const nextCenter = {
+        x: startCenter.x + rotatedCenterShift.x,
+        y: startCenter.y + rotatedCenterShift.y,
+      };
+      const x = Math.max(8, Math.min(block.width - width - 8, nextCenter.x - width / 2));
+      const y = Math.max(8, Math.min(bodyHeight - height - 8, nextCenter.y - height / 2 - BLOCK_HEADER_HEIGHT));
+
+      setDraftBlocks((blocks) => blocks.map((item) => item.id !== block.id ? item : {
+        ...item,
+        shapes: (item.shapes ?? []).map((itemShape) => itemShape.id === shape.id ? { ...itemShape, x, y, width, height } : itemShape),
+      }));
+      setIsLayoutEditing(true);
+      setDirty(true);
+      setSaveState("idle");
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    setSelectedBlockId(block.id);
+    setSelectedShapeId(shape.id);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  };
+
+  const handleRotatePointerDown = (event: React.PointerEvent<HTMLButtonElement>, block: RoomLayoutBlock) => {
+    if (!canEdit) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const center = { x: block.x + block.width / 2, y: block.y + block.height / 2 };
+    const startPoint = getCanvasPoint(event.nativeEvent, canvas);
+    const startAngle = Math.atan2(startPoint.y - center.y, startPoint.x - center.x);
+    const startRotation = block.rotation;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const currentPoint = getCanvasPoint(moveEvent, canvas);
+      const currentAngle = Math.atan2(currentPoint.y - center.y, currentPoint.x - center.x);
+      const delta = (currentAngle - startAngle) * 180 / Math.PI;
+      const rotation = Math.round((startRotation + delta) * 10) / 10;
+      setDraftBlocks((blocks) => blocks.map((item) => item.id === block.id ? { ...item, rotation } : item));
+      setIsLayoutEditing(true);
+      setDirty(true);
+      setSaveState("idle");
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    setSelectedBlockId(block.id);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  };
+
+  const handleSave = async () => {
+    if (!canEdit || !dirty) return;
+    setSaveState("saving");
+    try {
+      await saveRoomLayout(scopeKey, draftBlocks);
+      setDirty(false);
+      setIsLayoutEditing(false);
+      setSelectedBlockId(null);
+      setSelectedShapeId(null);
+      setSaveState("saved");
+    } catch (error) {
+      console.error("Error saving room layout:", error);
+      setSaveState("error");
+    }
+  };
+
+  const adjustCanvasZoom = (delta: number) => {
+    setCanvasZoom((current) => Math.max(0.5, Math.min(2, Math.round((current + delta) * 10) / 10)));
+  };
+
+  const handleCanvasWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    adjustCanvasZoom(event.deltaY < 0 ? 0.1 : -0.1);
+  };
+
+  const getLayoutStyle = (block: RoomLayoutBlock): React.CSSProperties => {
+    if (block.layout === "rows") return { gridTemplateColumns: "repeat(1, minmax(0, 1fr))", gridAutoRows: "minmax(44px, 1fr)" };
+    if (block.layout === "columns") return { gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gridAutoFlow: "column", gridAutoColumns: "minmax(0, 1fr)" };
+    if (block.layout === "compact") return { gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gridAutoRows: "minmax(38px, 1fr)" };
+    const columns = block.roomIds.length > 8 ? 4 : block.roomIds.length > 4 ? 3 : 2;
+    return { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gridAutoRows: "minmax(52px, 1fr)" };
+  };
+
+  const renderRoomTile = (room: LayoutRoom, inBlock = false, position?: RoomLayoutPosition) => {
+    const cfg = STATUS_CONFIG[room.computedStatus];
+    const residents = workers.filter((worker) => worker.roomId === room.id);
+    return (
+      <div
+        key={room.id}
+        data-room-tile="true"
+        draggable={canEdit}
+        onDragStart={(event) => handleRoomDragStart(event, room.id)}
+        onDragEnd={() => { setDraggedRoomId(null); setDragOverBlockId(null); }}
+        onClick={() => onRoomClick(room)}
+        title={canEdit ? "ลากห้องนี้ไปยัง Block ที่ต้องการ" : `เปิดรายละเอียดห้อง ${room.number}`}
+        style={inBlock && position ? { left: position.x, top: position.y, width: position.width, height: position.height } : undefined}
+        className={`group min-w-0 cursor-pointer rounded-lg border p-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${inBlock ? "absolute z-20 min-h-0" : "relative min-h-[74px]"} ${cfg.cardBg} ${cfg.cardBorder} ${draggedRoomId === room.id ? "opacity-40" : ""}`}
+      >
+        <div className="flex items-center gap-1">
+          {canEdit && <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+          <span className={`min-w-0 truncate text-[11px] font-extrabold ${cfg.textColor}`}>{room.number}</span>
+          <span className={`ml-auto h-2 w-2 shrink-0 rounded-full ${cfg.dotColor}`} />
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-1 text-[9px] text-slate-600">
+          <span className="truncate">{cfg.label}</span>
+          <span className="shrink-0 font-semibold tabular-nums">{residents.length}/{room.capacity || "—"}</span>
+        </div>
+        {!inBlock && residents.length > 0 && <div className="mt-1 truncate text-[8px] text-slate-500">{residents[0].firstName} {residents.length > 1 ? `+${residents.length - 1}` : ""}</div>}
+      </div>
+    );
+  };
+
+  const editingBlock = draftBlocks.find((block) => block.id === editingBlockId) ?? null;
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 sm:p-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-blue-100 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><Map className="h-4 w-4 text-blue-600" /> ผังห้องแบบจัดวาง</div>
+          <p className="mt-1 text-[11px] text-slate-500">ลากห้องจากด้านบนเข้ามาใน Block · ลากหัวเพื่อย้าย · ดึงขอบ/มุมเพื่อย่อขยาย · หมุนที่จุดมุม · Ctrl + Scroll เพื่อซูม</p>
+        </div>
+        {canEdit && (
+          <div className="flex flex-wrap items-center gap-2">
+            <input value={newBlockName} onChange={(event) => setNewBlockName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleAddBlock(); }} aria-label="ชื่อ Block ใหม่" className="w-32 rounded-lg border border-slate-200 px-2.5 py-2 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+            <button type="button" onClick={handleAddBlock} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"><Plus className="h-3.5 w-3.5" /> เพิ่ม Block</button>
+          </div>
+        )}
+      </div>
+
+      <div
+        onDragOver={(event) => { if (canEdit) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverBlockId("unassigned"); } }}
+        onDrop={(event) => handleRoomDrop(event, null)}
+        className={`rounded-xl border-2 border-dashed bg-white p-3 transition ${dragOverBlockId === "unassigned" ? "border-blue-400 bg-blue-50" : "border-slate-200"}`}
+      >
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Move className="h-3.5 w-3.5" /></span><span className="text-xs font-bold text-slate-700">ห้องที่ยังไม่ได้อยู่ใน Block</span><span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-amber-700">{unassignedRooms.length}</span></div>
+          {canEdit && <span className="text-[10px] text-slate-400">ลากกลับมาที่นี่เพื่อเอาออกจาก Block</span>}
+        </div>
+        {unassignedRooms.length > 0 ? (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">{unassignedRooms.map((room) => renderRoomTile(room))}</div>
+        ) : (
+          <div className="rounded-lg bg-emerald-50 px-3 py-4 text-center text-xs font-semibold text-emerald-700">ห้องที่แสดงอยู่ถูกจัดลง Block ครบแล้ว</div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex min-h-64 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm text-slate-400"><Loader2 className="h-5 w-5 animate-spin text-blue-500" /> กำลังโหลดผังที่บันทึกไว้...</div>
+      ) : (
+        <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2.5">
+              <div className="flex items-center gap-2"><span className="text-xs font-bold text-slate-700">พื้นที่ผัง</span><span className="text-[10px] text-slate-400">{draftBlocks.length} Block</span></div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                  <button type="button" onClick={() => adjustCanvasZoom(-0.1)} disabled={canvasZoom <= 0.5} aria-label="ซูมออก" title="ซูมออก" className="rounded-md p-1.5 text-slate-600 hover:bg-white hover:text-blue-600 disabled:opacity-40"><ZoomOut className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => setCanvasZoom(1)} aria-label="รีเซ็ตการซูม" title="รีเซ็ตการซูม" className="min-w-12 rounded-md px-1.5 py-1 text-[10px] font-bold tabular-nums text-slate-600 hover:bg-white hover:text-blue-600">{Math.round(canvasZoom * 100)}%</button>
+                  <button type="button" onClick={() => adjustCanvasZoom(0.1)} disabled={canvasZoom >= 2} aria-label="ซูมเข้า" title="ซูมเข้า" className="rounded-md p-1.5 text-slate-600 hover:bg-white hover:text-blue-600 disabled:opacity-40"><ZoomIn className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => setCanvasZoom(1)} aria-label="ขนาดปกติ" title="ขนาดปกติ" className="rounded-md p-1.5 text-slate-400 hover:bg-white hover:text-blue-600"><Maximize2 className="h-3.5 w-3.5" /></button>
+                </div>
+                {canEdit && <button type="button" onClick={handleSave} disabled={!dirty || saveState === "saving"} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${dirty ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-slate-100 text-slate-400"}`}><Save className="h-3.5 w-3.5" />{saveState === "saving" ? "กำลังบันทึก..." : saveState === "saved" ? "บันทึกแล้ว" : saveState === "error" ? "บันทึกไม่สำเร็จ" : "บันทึกผัง"}</button>}
+              </div>
+            </div>
+            <div className="overflow-auto p-2 sm:p-3">
+              <div onWheel={handleCanvasWheel} className="relative h-[680px] w-full overflow-auto rounded-lg border border-slate-200 bg-[#f7f9fc]" style={{ width: "100%", height: CANVAS_HEIGHT, backgroundImage: "linear-gradient(#e7ebf3 1px, transparent 1px), linear-gradient(90deg, #e7ebf3 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
+              <div className="relative" style={{ width: CANVAS_WIDTH * canvasZoom, height: CANVAS_HEIGHT * canvasZoom }}>
+              <div ref={canvasRef} className="relative overflow-hidden rounded-lg" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${canvasZoom})`, transformOrigin: "top left" }}>
+                {draftBlocks.map((block) => {
+                  const blockRooms = block.roomIds.map((roomId) => roomById.get(roomId)).filter((room): room is LayoutRoom => Boolean(room));
+                  const isSelected = block.id === selectedBlockId && isLayoutEditing;
+                  const showBlockControls = canEdit && isSelected;
+                  return (
+                    <div key={block.id} onClick={(event) => { if ((event.target as HTMLElement).closest("[data-room-tile],button,input,select")) return; setSelectedBlockId(block.id); setSelectedShapeId(null); if (canEdit) setIsLayoutEditing(true); }} className={`absolute flex flex-col overflow-visible rounded-xl bg-white/95 shadow-lg transition-shadow ${isSelected ? "z-20 border-2 border-blue-500 shadow-blue-200/70" : "z-10 border-0"}`} style={{ left: block.x, top: block.y, width: block.width, height: block.height, transform: `rotate(${block.rotation}deg)`, transformOrigin: "center" }}>
+                      {showBlockControls && <>
+                        {BLOCK_RESIZE_HANDLES.map((handle) => <span key={handle.key} onPointerDown={(event) => handleResizePointerDown(event, block, handle)} className={`absolute z-40 h-3.5 w-3.5 touch-none rounded-full border-2 border-white bg-blue-600 shadow ${handle.position} ${handle.cursor}`} aria-label={`ปรับขนาดด้าน ${handle.key}`} />)}
+                        <button type="button" onPointerDown={(event) => handleRotatePointerDown(event, block)} aria-label={`หมุน ${block.name} แบบอิสระ`} className="absolute -right-5 -top-8 z-40 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-violet-600 text-white shadow-md hover:bg-violet-700 cursor-grab active:cursor-grabbing touch-none"><RotateCw className="h-3.5 w-3.5" /></button>
+                        <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setEditingBlockId(block.id); }} aria-label={`แก้ไข ${block.name}`} className="absolute -right-14 -top-8 z-40 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-blue-600 text-white shadow-md hover:bg-blue-700"><Pencil className="h-3.5 w-3.5" /></button>
+                      </>}
+                      <div onPointerDown={(event) => handleBlockPointerDown(event, block)} className={`flex shrink-0 items-center gap-2 rounded-t-[10px] border-b border-slate-200 bg-slate-100 px-2.5 py-2 ${canEdit ? "cursor-move" : ""}`}>
+                        {showBlockControls && <GripVertical className="h-4 w-4 text-slate-400" />}
+                        <div className="min-w-0 flex-1">{isSelected ? <input value={block.name} onPointerDown={(event) => event.stopPropagation()} onChange={(event) => updateBlock(block.id, { name: event.target.value })} aria-label={`ชื่อ ${block.name}`} className="w-full min-w-0 truncate rounded bg-transparent px-1 text-xs font-extrabold text-slate-700 outline-none focus:bg-white focus:ring-1 focus:ring-blue-300" /> : <span className="block truncate px-1 text-xs font-extrabold text-slate-700">{block.name}</span>}{isSelected && <p className="px-1 text-[9px] text-slate-400">{blockRooms.length} ห้อง · {Math.round(block.rotation * 10) / 10}°</p>}</div>
+                        {showBlockControls && <select value={block.layout} onPointerDown={(event) => event.stopPropagation()} onChange={(event) => updateBlock(block.id, { layout: event.target.value as RoomBlockLayout })} aria-label={`รูปแบบ ${block.name}`} className="w-20 shrink-0 rounded border border-slate-200 bg-white px-1 py-1 text-[9px] text-slate-600 outline-none focus:border-blue-400"><option value="grid">ตาราง</option><option value="rows">แถว</option><option value="columns">2 คอลัมน์</option><option value="compact">กระชับ</option></select>}
+                        {showBlockControls && <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); deleteBlock(block.id); }} aria-label={`ลบ ${block.name}`} className="rounded-md p-1 text-red-500 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></button>}
+                      </div>
+                      <div onDragOver={(event) => { if (canEdit) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDragOverBlockId(block.id); } }} onDragLeave={() => setDragOverBlockId((current) => current === block.id ? null : current)} onDrop={(event) => handleRoomDrop(event, block.id)} className={`relative min-h-0 flex-1 overflow-hidden p-2 ${dragOverBlockId === block.id ? "bg-blue-50" : "bg-white/70"}`}>
+                        {(block.shapes ?? []).map((shape) => {
+                          const isShapeSelected = isLayoutEditing && selectedShapeId === shape.id;
+                          return <div key={shape.id} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setSelectedBlockId(block.id); setSelectedShapeId(shape.id); if (canEdit) setIsLayoutEditing(true); }} className={`pointer-events-auto absolute z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-slate-400 bg-slate-200/80 px-2 text-center text-[10px] font-bold text-slate-500 ${isShapeSelected ? "ring-2 ring-blue-500 ring-offset-1" : ""}`} style={{ left: shape.x, top: shape.y, width: shape.width, height: shape.height, transform: `rotate(${shape.rotation}deg)` }}>
+                            {canEdit && isShapeSelected && BLOCK_RESIZE_HANDLES.filter((handle) => handle.x !== 0 && handle.y !== 0).map((handle) => <span key={handle.key} onPointerDown={(event) => handleShapeResizePointerDown(event, block, shape, handle)} className={`absolute z-40 h-3.5 w-3.5 touch-none rounded-full border-2 border-white bg-blue-600 shadow ${handle.position} ${handle.cursor}`} aria-label={`ปรับขนาด ${shape.name} ด้าน ${handle.key}`} />)}
+                            <span>{shape.name}</span>
+                          </div>;
+                        })}
+                        {blockRooms.length > 0 ? blockRooms.map((room, index) => renderRoomTile(room, true, getRoomPosition(block, room.id, index))) : <div className="flex h-full min-h-24 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 px-3 text-center text-[10px] text-slate-400">ลากห้องมาวางใน Block นี้</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+                {draftBlocks.length === 0 && <div className="absolute inset-0 flex items-center justify-center p-6 text-center"><div className="max-w-sm rounded-2xl border border-dashed border-slate-300 bg-white/80 p-6"><Map className="mx-auto h-8 w-8 text-blue-300" /><p className="mt-2 text-sm font-bold text-slate-700">ยังไม่มี Block ในผังนี้</p><p className="mt-1 text-xs leading-5 text-slate-500">สร้าง Block แล้วลากห้องจากรายการด้านบนเข้ามาจัดวางได้เลย</p></div></div>}
+              </div>
+              </div>
+              </div>
+            </div>
+        </section>
+      )}
+      {editingBlock && <BlockEditModal block={editingBlock} onClose={() => setEditingBlockId(null)} onUpdate={(patch) => updateBlock(editingBlock.id, patch)} onAddShape={() => addShape(editingBlock.id)} onUpdateShape={(shapeId, patch) => updateShape(editingBlock.id, shapeId, patch)} onDeleteShape={(shapeId) => deleteShape(editingBlock.id, shapeId)} />}
+    </div>
+  );
+}
+
 function CustomSiteMap({ rooms, workers, onRoomClick }: { rooms: (Room & { computedStatus: RoomStatus })[]; workers: Worker[]; onRoomClick: (r: Room) => void }) {
   // Helper to render a specific room button by its exact number (e.g. "A-5/10")
   const renderRoom = (roomNumber: string) => {
@@ -1162,6 +1830,7 @@ export default function RoomsPage() {
   const allRooms = selectedZoneId === "all" 
       ? rooms.filter(r => availableZones.some(z => z.id === r.zoneId)) 
       : rooms.filter((r) => r.zoneId === selectedZoneId);
+  const roomLayoutScopeKey = `${selectedCampId}:${selectedZoneId}`;
 
   const enrichedRooms = allRooms.map((r) => {
     const occ = workers.filter(w => w.roomId === r.id).length;
@@ -1328,7 +1997,7 @@ export default function RoomsPage() {
             ))}
           </div>
         ) : (
-          <CustomSiteMap rooms={filteredRooms} workers={workers} onRoomClick={(room) => setActiveRoomId(room.id)} />
+          <RoomLayoutMap rooms={filteredRooms} workers={workers} onRoomClick={(room) => setActiveRoomId(room.id)} canEdit={Boolean(canEditRoom)} scopeKey={roomLayoutScopeKey} />
         )}
       </div>
       
