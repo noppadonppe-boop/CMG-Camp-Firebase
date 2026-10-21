@@ -17,10 +17,13 @@ export interface RoomLayoutPosition {
   height: number;
 }
 
+export const DEFAULT_ROOM_LAYOUT_SHAPE_COLOR = "#94a3b8";
+
 export interface RoomLayoutShape extends RoomLayoutPosition {
   id: string;
   name: string;
   rotation: number;
+  color: string;
 }
 
 export interface RoomLayoutBlock {
@@ -86,6 +89,7 @@ function normaliseBlock(value: unknown): RoomLayoutBlock | null {
         width: Number.isFinite(shape.width) ? Number(shape.width) : 160,
         height: Number.isFinite(shape.height) ? Number(shape.height) : 64,
         rotation: Number.isFinite(shape.rotation) ? Number(shape.rotation) : 0,
+        color: typeof shape.color === "string" && /^#[0-9a-f]{6}$/i.test(shape.color) ? shape.color : DEFAULT_ROOM_LAYOUT_SHAPE_COLOR,
       }];
     }) : [],
   };
