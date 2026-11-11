@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package, Lock, LockOpen, ShieldAlert, Search, RotateCw, Save, GripVertical, Move, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { User, Users, Wrench, ChevronDown, Plus, X, Building2, Loader2, Pencil, Trash2, Zap, LogIn, LogOut, Calendar, Grid, Map, Info, Mars, Venus, ChevronRight, Package, Lock, LockOpen, ShieldAlert, Search, RotateCw, Save, GripVertical, Move, ZoomIn, ZoomOut, Maximize2, ImagePlus } from "lucide-react";
 import {
   useRooms,
   useZones,
@@ -20,7 +20,7 @@ import {
 import { useCamps } from "@/lib/db/useCamps";
 import { useCamp } from "@/context/CampContext";
 import { useWorkers, updateWorker, type Worker } from "@/lib/db/useWorkers";
-import { DEFAULT_ROOM_LAYOUT_SHAPE_COLOR, saveRoomLayout, useRoomLayout, type RoomBlockLayout, type RoomLayoutBlock, type RoomLayoutPosition, type RoomLayoutShape } from "@/lib/db/useRoomLayouts";
+import { DEFAULT_ROOM_LAYOUT_SHAPE_COLOR, campPlanScopeKey, removeCampPlanImage, saveRoomLayout, uploadCampPlanImage, useRoomLayout, type RoomBlockLayout, type RoomLayoutBlock, type RoomLayoutPosition, type RoomLayoutShape } from "@/lib/db/useRoomLayouts";
 import { useAuth } from "@/context/AuthContext";
 import { USER_ROLES, type UserRole } from "@/types/auth";
 import {
@@ -1025,6 +1025,85 @@ function BlockEditModal({
         <div className="flex justify-end border-t border-slate-100 px-5 py-3"><button type="button" onClick={onClose} className="rounded-lg bg-slate-800 px-4 py-2 text-xs font-bold text-white hover:bg-slate-900">เสร็จสิ้น</button></div>
       </div>
     </div>
+  );
+}
+
+function CampPlanImage({ campId, canEdit }: { campId: string; canEdit: boolean }) {
+  const { layout, loading } = useRoomLayout(campPlanScopeKey(campId));
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const [zoomed, setZoomed] = useState(false);
+  const imageUrl = layout?.planImageUrl || "";
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    try {
+      await uploadCampPlanImage(campId, file, layout?.planImagePath);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "อัปโหลดรูปผังไม่สำเร็จ");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function handleRemove() {
+    if (!window.confirm("ลบรูปผังของแคมป์นี้ออกหรือไม่?")) return;
+    setUploading(true);
+    setError("");
+    try {
+      await removeCampPlanImage(campId, layout?.planImagePath);
+      setZoomed(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ลบรูปผังไม่สำเร็จ");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800"><ImagePlus className="h-4 w-4 text-blue-600" /> รูปผังแคมป์</h2>
+          <p className="mt-1 text-xs text-slate-500">แนบภาพผังอาคารของแคมป์นี้ไว้ดูคู่กับรายการห้อง ไฟล์รูปไม่เกิน 10 MB</p>
+        </div>
+        {canEdit && (
+          <div className="flex flex-wrap gap-2">
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(event) => handleFile(event.target.files?.[0])} />
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60">
+              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+              {imageUrl ? "เปลี่ยนรูปผัง" : "แนบรูปผัง"}
+            </button>
+            {imageUrl && (
+              <button type="button" onClick={handleRemove} disabled={uploading} className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:opacity-60">
+                <Trash2 className="h-3.5 w-3.5" /> ลบรูป
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+      {loading ? (
+        <div className="mt-3 flex items-center gap-2 text-xs text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> กำลังโหลดรูปผัง...</div>
+      ) : imageUrl ? (
+        <button type="button" onClick={() => setZoomed(true)} className="mt-3 block w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+          <img src={imageUrl} alt="รูปผังแคมป์" className="max-h-80 w-full object-contain" />
+          <span className="block border-t border-slate-100 px-3 py-2 text-center text-[11px] font-semibold text-blue-600">คลิกเพื่อดูขนาดเต็ม</span>
+        </button>
+      ) : (
+        <div className="mt-3 rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-xs text-slate-400">ยังไม่มีรูปผังของแคมป์นี้</div>
+      )}
+      {zoomed && imageUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setZoomed(false)}>
+          <button type="button" onClick={() => setZoomed(false)} className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white hover:bg-white/25"><X className="h-5 w-5" /></button>
+          <img src={imageUrl} alt="รูปผังแคมป์ขนาดเต็ม" className="max-h-[90vh] max-w-full object-contain" onClick={(event) => event.stopPropagation()} />
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2498,6 +2577,8 @@ export default function RoomsPage() {
           </div>
           {searchKeyword && <p role="status" className="mt-2 text-xs text-gray-500">พบ {filteredRooms.length} ห้องที่ตรงกับคำค้นหาในตัวกรองที่เลือก</p>}
         </div>
+
+        {selectedCampId !== "all" && <CampPlanImage campId={selectedCampId} canEdit={Boolean(canEditRoom)} />}
 
         {viewMode === "grid" && (
           <div className="mb-4 flex flex-wrap items-center gap-4">
