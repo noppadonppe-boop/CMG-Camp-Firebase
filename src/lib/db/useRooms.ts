@@ -10,6 +10,7 @@ import {
   updateDoc,
   deleteDoc,
   deleteField,
+  writeBatch,
   Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -114,7 +115,8 @@ export function useRooms() {
 }
 
 export async function addZone(data: Omit<Zone, "id">) {
-  await addDoc(collection(db, ROOT, ROOT_DOC, "zones"), data);
+  const ref = await addDoc(collection(db, ROOT, ROOT_DOC, "zones"), data);
+  return ref.id;
 }
 
 export async function updateZone(id: string, data: Partial<Omit<Zone, "id">>) {
@@ -129,8 +131,30 @@ export async function addRoom(data: Omit<Room, "id">) {
   await addDoc(collection(db, ROOT, ROOT_DOC, "rooms"), data);
 }
 
+const BATCH_LIMIT = 400;
+
+export async function addRooms(items: Omit<Room, "id">[]) {
+  for (let i = 0; i < items.length; i += BATCH_LIMIT) {
+    const batch = writeBatch(db);
+    for (const data of items.slice(i, i + BATCH_LIMIT)) {
+      batch.set(doc(collection(db, ROOT, ROOT_DOC, "rooms")), data);
+    }
+    await batch.commit();
+  }
+}
+
 export async function updateRoom(id: string, data: Partial<Omit<Room, "id">>) {
   await updateDoc(doc(db, ROOT, ROOT_DOC, "rooms", id), data);
+}
+
+export async function updateRooms(updates: { id: string; data: Partial<Omit<Room, "id">> }[]) {
+  for (let i = 0; i < updates.length; i += BATCH_LIMIT) {
+    const batch = writeBatch(db);
+    for (const item of updates.slice(i, i + BATCH_LIMIT)) {
+      batch.update(doc(db, ROOT, ROOT_DOC, "rooms", item.id), item.data);
+    }
+    await batch.commit();
+  }
 }
 
 export async function deleteRoom(id: string) {

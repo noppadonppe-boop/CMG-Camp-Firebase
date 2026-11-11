@@ -4,7 +4,10 @@ import {
   useRooms,
   useZones,
   addRoom,
+  addRooms,
+  addZone,
   updateRoom,
+  updateRooms,
   deleteRoom,
   reserveRoom,
   clearRoomReservation,
@@ -149,7 +152,7 @@ function AddRoomModal({ zones, defaultZoneId, onClose }: { zones: Zone[]; defaul
             <div className="relative"><select value={zoneId} onChange={(e) => { setZoneId(e.target.value); setError(""); }} className="w-full appearance-none rounded-xl border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm outline-none focus:ring-2 focus:ring-blue-500 hover:border-gray-400"><option value="">-- เลือกโซน --</option>{zones.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /></div>
           </div>
           <div><label className="mb-1 block text-xs font-semibold text-gray-600">หมายเลขห้อง <span className="text-red-500">*</span></label><input value={number} onChange={(e) => { setNumber(e.target.value); setError(""); }} placeholder="เช่น D-401" className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400" /></div>
-          <div><label className="mb-1 block text-xs font-semibold text-gray-600">ความจุ (คน) <span className="text-red-500">*</span></label><input type="number" min={1} max={20} value={capacity} onChange={(e) => { setCapacity(e.target.value); setError(""); }} disabled={status === "maintenance" || status === "storage"} className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400 disabled:bg-gray-50 disabled:text-gray-400" /></div>
+          <div><label className="mb-1 block text-xs font-semibold text-gray-600">ความจุ (คน) <span className="text-red-500">*</span></label><input type="number" min={1} max={500} value={capacity} onChange={(e) => { setCapacity(e.target.value); setError(""); }} disabled={status === "maintenance" || status === "storage"} className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400 disabled:bg-gray-50 disabled:text-gray-400" /></div>
           <div><label className="mb-1 block text-xs font-semibold text-gray-600">สถานะเริ่มต้น</label>
             <div className="flex gap-2">
               {([{ value: "empty" as RoomStatus, label: "ว่าง" }, { value: "maintenance" as RoomStatus, label: "ซ่อมบำรุง" }, { value: "storage" as RoomStatus, label: "เก็บของ" }]).map((opt) => (
@@ -794,7 +797,7 @@ function EditRoomModal({ room, zones, workers, onClose }: { room: Room; zones: Z
             <div className="relative"><select value={zoneId} onChange={(e) => { setZoneId(e.target.value); setError(""); }} className="w-full appearance-none rounded-xl border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm outline-none focus:ring-2 focus:ring-blue-500 hover:border-gray-400"><option value="">-- เลือกโซน --</option>{zones.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /></div>
           </div>
           <div><label className="mb-1 block text-xs font-semibold text-gray-600">หมายเลขห้อง <span className="text-red-500">*</span></label><input value={number} onChange={(e) => { setNumber(e.target.value); setError(""); }} placeholder="เช่น D-401" className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400" /></div>
-          <div><label className="mb-1 block text-xs font-semibold text-gray-600">ความจุ (คน) <span className="text-red-500">*</span></label><input type="number" min={occupiedCount > 0 ? occupiedCount : 1} max={20} value={capacity} onChange={(e) => { setCapacity(e.target.value); setError(""); }} disabled={status === "maintenance" || status === "storage"} className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400 disabled:bg-gray-50 disabled:text-gray-400" /></div>
+          <div><label className="mb-1 block text-xs font-semibold text-gray-600">ความจุ (คน) <span className="text-red-500">*</span></label><input type="number" min={occupiedCount > 0 ? occupiedCount : 1} max={500} value={capacity} onChange={(e) => { setCapacity(e.target.value); setError(""); }} disabled={status === "maintenance" || status === "storage"} className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400 disabled:bg-gray-50 disabled:text-gray-400" /></div>
           <div><label className="mb-1 block text-xs font-semibold text-gray-600">สถานะ</label>
             <div className="flex gap-2">
               {([{ value: "empty" as RoomStatus, label: "เปิดใช้งาน" }, { value: "maintenance" as RoomStatus, label: "ซ่อมบำรุง" }, { value: "storage" as RoomStatus, label: "เก็บของ" }]).map((opt) => (
@@ -1934,12 +1937,396 @@ function CustomSiteMap({ rooms, workers, onRoomClick }: { rooms: (Room & { compu
   );
 }
 
+const MEI_PLAN_ROOMS = `M1=18
+M2=18
+M3=20
+M4=18
+M5=24
+M6=12
+M7=10
+M8=10`;
+
+function parseBulkRoomLines(text: string): { rooms: { number: string; capacity: number }[]; errors: string[] } {
+  const rooms: { number: string; capacity: number }[] = [];
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  text.split(/\r?\n/).forEach((raw, idx) => {
+    const line = raw.trim().replace(/คน\s*$/, "").trim();
+    if (!line || line.startsWith("#")) return;
+    const match = line.match(/^(.+?)\s*[=:：]\s*(\d+)\s*$/) || line.match(/^(\S+)\s+(\d+)\s*$/);
+    if (!match) {
+      errors.push(`บรรทัด ${idx + 1}: ใช้รูปแบบ หมายเลข=จำนวนคน เช่น M1=18`);
+      return;
+    }
+    const number = match[1].trim().toUpperCase();
+    const capacity = parseInt(match[2], 10);
+    if (!number) {
+      errors.push(`บรรทัด ${idx + 1}: ไม่มีหมายเลขห้อง`);
+      return;
+    }
+    if (!capacity || capacity < 1 || capacity > 500) {
+      errors.push(`บรรทัด ${idx + 1}: จำนวนคนต้องอยู่ระหว่าง 1–500`);
+      return;
+    }
+    if (seen.has(number)) {
+      errors.push(`บรรทัด ${idx + 1}: หมายเลข ${number} ซ้ำในรายการ`);
+      return;
+    }
+    seen.add(number);
+    rooms.push({ number, capacity });
+  });
+  return { rooms, errors };
+}
+
+function BulkAddRoomsModal({
+  zones,
+  defaultZoneId,
+  campId,
+  existingRooms,
+  onClose,
+  onCreated,
+}: {
+  zones: Zone[];
+  defaultZoneId: string;
+  campId: string;
+  existingRooms: Room[];
+  onClose: () => void;
+  onCreated: (zoneId: string) => void;
+}) {
+  const canCreateZone = campId !== "all" && !!campId;
+  const initialZone =
+    defaultZoneId !== "all" && zones.some((z) => z.id === defaultZoneId)
+      ? defaultZoneId
+      : zones[0]?.id ?? (canCreateZone ? "__new__" : "");
+  const [zoneId, setZoneId] = useState(initialZone);
+  const [newZoneLabel, setNewZoneLabel] = useState("โซนหลัก");
+  const [text, setText] = useState(MEI_PLAN_ROOMS);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const parsed = parseBulkRoomLines(text);
+  const existingNumbers = new Set(
+    (zoneId && zoneId !== "__new__" ? existingRooms.filter((r) => r.zoneId === zoneId) : []).map((r) => r.number.trim().toUpperCase())
+  );
+  const freshRooms = parsed.rooms.filter((r) => !existingNumbers.has(r.number));
+  const skipped = parsed.rooms.filter((r) => existingNumbers.has(r.number));
+  const totalPeople = freshRooms.reduce((sum, r) => sum + r.capacity, 0);
+
+  async function handleSubmit() {
+    if (!zoneId) {
+      setError(canCreateZone ? "กรุณาเลือกโซน หรือสร้างโซนใหม่" : "กรุณาเลือกแคมป์ก่อน แล้วเลือกโซน");
+      return;
+    }
+    if (parsed.errors.length > 0) {
+      setError(parsed.errors.join("\n"));
+      return;
+    }
+    if (freshRooms.length === 0) {
+      setError(parsed.rooms.length === 0 ? "ยังไม่มีรายการห้อง" : "ห้องในรายการมีอยู่ในโซนนี้แล้ว");
+      return;
+    }
+    setSaving(true);
+    try {
+      let targetZoneId = zoneId;
+      if (zoneId === "__new__") {
+        const label = newZoneLabel.trim();
+        if (!label) {
+          setError("กรุณาระบุชื่อโซน");
+          setSaving(false);
+          return;
+        }
+        const campZones = zones.filter((z) => z.campId === campId);
+        targetZoneId = await addZone({ label, campId, order: campZones.length });
+      }
+      await addRooms(
+        freshRooms.map((room) => ({
+          number: room.number,
+          zoneId: targetZoneId,
+          occupied: 0,
+          capacity: room.capacity,
+          status: "empty" as RoomStatus,
+        }))
+      );
+      onCreated(targetZoneId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "เพิ่มห้องไม่สำเร็จ");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-blue-600" />
+            <h3 className="text-base font-bold text-gray-800">เพิ่มหลายห้องพร้อมกัน</h3>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="space-y-3 overflow-y-auto px-6 py-4">
+          <p className="text-xs leading-relaxed text-gray-500">
+            หนึ่งบรรทัดต่อหนึ่งห้อง ในรูปแบบ <span className="font-semibold text-gray-700">หมายเลข=จำนวนคนพัก</span> เช่น M1=18
+            รายการด้านล่างใส่ตามผัง Camp เช่า เหมย ไว้แล้ว แก้ตัวเลขหรือเพิ่มบรรทัดได้ก่อนบันทึก
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-600">โซน <span className="text-red-500">*</span></label>
+            <div className="relative">
+              <select
+                value={zoneId}
+                onChange={(e) => { setZoneId(e.target.value); setError(""); }}
+                className="w-full appearance-none rounded-xl border border-gray-300 bg-white px-3 py-2.5 pr-9 text-sm outline-none focus:ring-2 focus:ring-blue-500 hover:border-gray-400"
+              >
+                <option value="">-- เลือกโซน --</option>
+                {zones.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
+                {canCreateZone && <option value="__new__">+ สร้างโซนใหม่ในแคมป์นี้</option>}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            </div>
+          </div>
+          {zoneId === "__new__" && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-600">ชื่อโซนใหม่</label>
+              <input
+                value={newZoneLabel}
+                onChange={(e) => { setNewZoneLabel(e.target.value); setError(""); }}
+                placeholder="เช่น โซนหลัก"
+                className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400"
+              />
+            </div>
+          )}
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-semibold text-gray-600">รายการห้อง</label>
+              <button type="button" onClick={() => { setText(MEI_PLAN_ROOMS); setError(""); }} className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">
+                ใส่ตามผังอีกครั้ง
+              </button>
+            </div>
+            <textarea
+              value={text}
+              onChange={(e) => { setText(e.target.value); setError(""); }}
+              rows={8}
+              spellCheck={false}
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 font-mono text-sm outline-none focus:ring-2 focus:ring-blue-400 hover:border-gray-400"
+            />
+          </div>
+          {parsed.rooms.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <p className="mb-2 text-xs font-semibold text-gray-700">
+                จะเพิ่ม {freshRooms.length} ห้อง · รวม {totalPeople.toLocaleString()} คน
+                {skipped.length > 0 && <span className="font-normal text-amber-700"> · ข้าม {skipped.length} ห้องที่มีอยู่แล้ว</span>}
+              </p>
+              <div className="max-h-32 space-y-1 overflow-y-auto">
+                {parsed.rooms.map((room) => {
+                  const exists = existingNumbers.has(room.number);
+                  return (
+                    <div key={room.number} className={`flex items-center justify-between text-xs ${exists ? "text-amber-700" : "text-gray-700"}`}>
+                      <span className="font-semibold">{room.number}</span>
+                      <span>{exists ? "มีอยู่แล้ว จะข้าม" : `${room.capacity} คน`}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {(error || parsed.errors.length > 0) && (
+            <p className="whitespace-pre-line text-xs text-red-500">{error || parsed.errors.join("\n")}</p>
+          )}
+        </div>
+        <div className="flex gap-3 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition">ยกเลิก</button>
+          <button onClick={handleSubmit} disabled={saving || freshRooms.length === 0 || parsed.errors.length > 0} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-95 transition disabled:opacity-60">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            เพิ่ม {freshRooms.length > 0 ? `${freshRooms.length} ห้อง` : "ห้อง"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkCapacityModal({ rooms, workers, onClose }: { rooms: Room[]; workers: Worker[]; onClose: () => void }) {
+  const editable = rooms.filter((room) => room.status !== "maintenance" && room.status !== "storage");
+  const [draft, setDraft] = useState<Record<string, string>>(() => Object.fromEntries(editable.map((room) => [room.id, String(room.capacity)])));
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [applyValue, setApplyValue] = useState("");
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const occupantCount = (roomId: string) => workers.filter((w) => w.roomId === roomId).length;
+  const visible = editable.filter((room) => room.number.toLowerCase().includes(query.trim().toLowerCase()));
+  const changedCount = editable.filter((room) => (draft[room.id] ?? "") !== String(room.capacity)).length;
+  const allVisibleSelected = visible.length > 0 && visible.every((room) => selected.has(room.id));
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visible.forEach((room) => next.delete(room.id));
+      else visible.forEach((room) => next.add(room.id));
+      return next;
+    });
+  }
+
+  function applyToSelected() {
+    const cap = parseInt(applyValue, 10);
+    if (!cap || cap < 1 || cap > 500) {
+      setError("จำนวนคนต้องอยู่ระหว่าง 1–500");
+      return;
+    }
+    if (selected.size === 0) {
+      setError("กรุณาเลือกห้องที่ต้องการก่อน");
+      return;
+    }
+    setDraft((prev) => {
+      const next = { ...prev };
+      selected.forEach((id) => { next[id] = String(cap); });
+      return next;
+    });
+    setError("");
+  }
+
+  async function handleSave() {
+    const problems: string[] = [];
+    const updates: { id: string; data: { capacity: number } }[] = [];
+    for (const room of editable) {
+      const cap = parseInt(draft[room.id] ?? "", 10);
+      const staying = occupantCount(room.id);
+      if (cap === room.capacity) continue;
+      if (!cap || cap < 1 || cap > 500) {
+        problems.push(`${room.number}: จำนวนคนต้องอยู่ระหว่าง 1–500`);
+        continue;
+      }
+      if (cap < staying) {
+        problems.push(`${room.number}: มีผู้พัก ${staying} คน ตั้งน้อยกว่านี้ไม่ได้`);
+        continue;
+      }
+      updates.push({ id: room.id, data: { capacity: cap } });
+    }
+    if (problems.length > 0) {
+      setError(problems.join("\n"));
+      return;
+    }
+    if (updates.length === 0) {
+      setError("ไม่มีการเปลี่ยนแปลง");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateRooms(updates);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-amber-600" />
+            <h3 className="text-base font-bold text-gray-800">แก้จำนวนคนพักหลายห้อง</h3>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="space-y-3 overflow-y-auto px-6 py-4">
+          <p className="text-xs leading-relaxed text-gray-500">
+            แสดงห้องในแคมป์และโซนที่เลือกอยู่ เลือกหลายห้องแล้วกำหนดจำนวนคนครั้งเดียว หรือแก้ทีละช่องแล้วบันทึกพร้อมกัน
+          </p>
+          {editable.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-300 py-8 text-center text-sm text-gray-400">ยังไม่มีห้องในแคมป์หรือโซนนี้</div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="ค้นหาหมายเลขห้อง"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400 sm:max-w-xs"
+                />
+                <div className="flex flex-1 items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={applyValue}
+                    onChange={(e) => { setApplyValue(e.target.value); setError(""); }}
+                    placeholder="จำนวนคน"
+                    className="w-28 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                  <button type="button" onClick={applyToSelected} className="rounded-xl bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600">
+                    ใช้กับที่เลือก ({selected.size})
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-gray-200">
+                <div className="grid grid-cols-[auto_1fr_auto_7rem] items-center gap-2 bg-gray-50 px-3 py-2 text-[11px] font-semibold text-gray-500">
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleVisible} className="h-4 w-4 accent-amber-600" />
+                  <span>ห้อง</span>
+                  <span>ผู้พักตอนนี้</span>
+                  <span>จำนวนคนพัก</span>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {visible.map((room) => {
+                    const staying = occupantCount(room.id);
+                    const dirty = (draft[room.id] ?? "") !== String(room.capacity);
+                    return (
+                      <div key={room.id} className={`grid grid-cols-[auto_1fr_auto_7rem] items-center gap-2 border-t border-gray-100 px-3 py-2 ${dirty ? "bg-amber-50" : "bg-white"}`}>
+                        <input type="checkbox" checked={selected.has(room.id)} onChange={() => toggle(room.id)} className="h-4 w-4 accent-amber-600" />
+                        <span className="text-sm font-bold text-gray-800">{room.number}</span>
+                        <span className="text-xs text-gray-500">{staying} คน</span>
+                        <input
+                          type="number"
+                          min={staying > 0 ? staying : 1}
+                          max={500}
+                          value={draft[room.id] ?? ""}
+                          onChange={(e) => {
+                            setDraft((prev) => ({ ...prev, [room.id]: e.target.value }));
+                            setError("");
+                          }}
+                          className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                      </div>
+                    );
+                  })}
+                  {visible.length === 0 && <p className="px-3 py-6 text-center text-xs text-gray-400">ไม่พบห้องที่ค้นหา</p>}
+                </div>
+              </div>
+            </>
+          )}
+          {error && <p className="whitespace-pre-line text-xs text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-3 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition">ยกเลิก</button>
+          <button onClick={handleSave} disabled={saving || editable.length === 0 || changedCount === 0} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-amber-700 active:scale-95 transition disabled:opacity-60">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+            บันทึก {changedCount > 0 ? `${changedCount} ห้อง` : ""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RoomsPage() {
   const { userProfile } = useAuth();
   const { selectedCamp } = useCamp();
   const canEditRoom = userProfile?.roles?.includes("CampBoss") || userProfile?.roles?.includes("MasterAdmin");
   const { camps, loading: campsLoading } = useCamps();
-  const { zones, loading: zonesLoading } = useZones();
+  const { zones, loading: zonesLoading, refresh: refreshZones } = useZones();
   const { rooms, loading: roomsLoading } = useRooms();
   const { workers } = useWorkers();
   
@@ -1959,6 +2346,8 @@ export default function RoomsPage() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [roomToEdit, setRoomToEdit] = useState<Room | null>(null);
   const [showAddRoom, setShowAddRoom] = useState(false);
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
+  const [showBulkCapacity, setShowBulkCapacity] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
   
   const loading = zonesLoading || roomsLoading || campsLoading;
@@ -2034,7 +2423,7 @@ export default function RoomsPage() {
             <h1 className="text-2xl font-bold text-gray-800">แผนห้องพัก <span className="text-lg font-normal text-gray-400">Room Allocation</span></h1>
             <p className="mt-1 text-sm text-gray-500">ภาพรวมการใช้ห้องพักแบ่งตามแคมป์และโซน</p>
           </div>
-          <div className="flex shrink-0 gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2">
             <div className="flex rounded-lg bg-gray-100 p-1 border border-gray-200">
               <button
                 onClick={() => setViewMode("grid")}
@@ -2053,6 +2442,14 @@ export default function RoomsPage() {
                 <Map className="h-4 w-4" /> แบบผังห้อง
               </button>
             </div>
+            <button onClick={() => setShowBulkAdd(true)} className="flex items-center gap-1.5 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-50 active:scale-95">
+              <Plus className="h-4 w-4" /> เพิ่มหลายห้อง
+            </button>
+            {canEditRoom && (
+              <button onClick={() => setShowBulkCapacity(true)} className="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100 active:scale-95">
+                <Users className="h-4 w-4" /> แก้จำนวนคนหลายห้อง
+              </button>
+            )}
             <button onClick={() => setShowAddRoom(true)} className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-95">
               <Plus className="h-4 w-4" /> เพิ่มห้องพัก
             </button>
@@ -2141,6 +2538,27 @@ export default function RoomsPage() {
       {activeRoom && <RoomSidePanel room={activeRoom} workers={workers} onClose={() => setActiveRoomId(null)} canEdit={canEditRoom} onEditRoom={() => setRoomToEdit(activeRoom)} onDeleteRoom={() => handleDeleteRoom(activeRoom)} />}
       {roomToEdit && <EditRoomModal room={roomToEdit} zones={availableZones} workers={workers} onClose={() => setRoomToEdit(null)} />}
       {showAddRoom && <AddRoomModal zones={availableZones} defaultZoneId={selectedZoneId} onClose={() => setShowAddRoom(false)} />}
+      {showBulkAdd && (
+        <BulkAddRoomsModal
+          zones={availableZones}
+          defaultZoneId={selectedZoneId}
+          campId={selectedCampId}
+          existingRooms={rooms}
+          onClose={() => setShowBulkAdd(false)}
+          onCreated={(zoneId) => {
+            refreshZones();
+            setSelectedZoneId(zoneId);
+            setShowBulkAdd(false);
+          }}
+        />
+      )}
+      {showBulkCapacity && (
+        <BulkCapacityModal
+          rooms={allRooms}
+          workers={workers}
+          onClose={() => setShowBulkCapacity(false)}
+        />
+      )}
     </>
   );
 }
