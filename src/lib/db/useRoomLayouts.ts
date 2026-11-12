@@ -7,8 +7,7 @@ import {
   setDoc,
   type Timestamp,
 } from "firebase/firestore";
-import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 
 export type RoomBlockLayout = "grid" | "rows" | "columns" | "compact";
 
@@ -152,63 +151,65 @@ function isImageFile(file: File) {
 
 export async function preparePlanImage(file: File): Promise<Blob> {
   if (!isImageFile(file)) throw new Error("กรุณาเลือกไฟล์รูปภาพ JPG หรือ PNG");
+  let bitmap: ImageBitmap;
   try {
-    const bitmap = await createImageBitmap(file);
-    const maxWidth = 2000;
-    const scale = Math.min(1, maxWidth / bitmap.width);
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("แปลงรูปไม่สำเร็จ");
-    context.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
-    if (!blob) throw new Error("แปลงรูปไม่สำเร็จ");
-    if (blob.size > PLAN_IMAGE_MAX_BYTES) throw new Error("รูปยังใหญ่เกิน 10 MB หลังลดขนาด ลองใช้รูปที่เล็กลง");
-    return blob;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("10 MB")) throw error;
+    bitmap = await createImageBitmap(file);
+  } catch {
     throw new Error("เปิดไฟล์นี้ไม่ได้ ลองบันทึกเป็น JPG แล้วแนบใหม่");
   }
-}
-
-function storageErrorMessage(error: unknown) {
-  const code = typeof error === "object" && error && "code" in error ? String((error as { code: string }).code) : "";
-  const message = error instanceof Error ? error.message : "";
-  if (code.includes("unauthorized") || message.includes("unauthorized") || message.includes("permission")) {
-    return "อัปโหลดรูปไม่สำเร็จ เพราะที่เก็บไฟล์ยังไม่ให้สิทธิ์ ลองรีเฟรชหน้าแล้วแนบใหม่อีกครั้ง";
-  }
-  return message || "อัปโหลดรูปผังไม่สำเร็จ";
-}
-
-export async function uploadCampPlanImage(campId: string, file: Blob, previousPath?: string) {
-  const scopeKey = campPlanScopeKey(campId);
-  const path = `room-plans/${documentId(scopeKey)}/${Date.now()}.jpg`;
-  const storageRef = ref(storage, path);
   try {
-    await uploadBytes(storageRef, file, { contentType: "image/jpeg" });
-    const url = await getDownloadURL(storageRef);
-    await setDoc(
-      doc(db, ROOT, ROOT_DOC, "roomLayouts", documentId(scopeKey)),
-      { scopeKey, planImageUrl: url, planImagePath: path, updatedAt: serverTimestamp() },
-      { merge: true },
-    );
-    if (previousPath && previousPath !== path) {
-      try { await deleteObject(ref(storage, previousPath)); } catch { /* ไฟล์เดิมอาจถูกลบไปแล้ว */ }
+    let maxWidth = 1600;
+    let quality = 0.8;
+    let blob = await encodeJpeg(bitmap, maxWidth, quality);
+    while (blob.size > 650_000 && (quality > 0.45 || maxWidth > 900)) {
+      if (quality > 0.45) quality = Math.round((quality - 0.1) * 10) / 10;
+      else maxWidth = Math.round(maxWidth * 0.8);
+      blob = await encodeJpeg(bitmap, maxWidth, quality);
     }
-    return { url, path };
-  } catch (error) {
-    throw new Error(storageErrorMessage(error));
+    if (blob.size > PLAN_IMAGE_MAX_BYTES) throw new Error("รูปยังใหญ่เกินกว่าจะบันทึกได้ ลองใช้รูปที่เล็กลง");
+    return blob;
+  } finally {
+    bitmap.close();
   }
 }
 
-export async function removeCampPlanImage(campId: string, path?: string) {
-  if (path) {
-    try { await deleteObject(ref(storage, path)); } catch { /* ไฟล์เดิมอาจถูกลบไปแล้ว */ }
-  }
+function encodeJpeg(bitmap: ImageBitmap, maxWidth: number, quality: number) {
+  const scale = Math.min(1, maxWidth / bitmap.width);
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("แปลงรูปไม่สำเร็จ");
+  context.drawImage(bitmap, 0, 0, width, height);
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("แปลงรูปไม่สำเร็จ")), "image/jpeg", quality);
+  });
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("อ่านรูปไม่สำเร็จ"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function uploadCampPlanImage(campId: string, file: Blob, _previousPath?: string) {
+  const scopeKey = campPlanScopeKey(campId);
+  const planImageUrl = await blobToDataUrl(file);
+  if (planImageUrl.length > 1_000_000) throw new Error("รูปยังใหญ่เกินกว่าจะบันทึกได้ ลองใช้รูปที่เล็กลง");
+  await setDoc(
+    doc(db, ROOT, ROOT_DOC, "roomLayouts", documentId(scopeKey)),
+    { scopeKey, planImageUrl, planImagePath: "", updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+  return { url: planImageUrl, path: "" };
+}
+
+export async function removeCampPlanImage(campId: string) {
   const scopeKey = campPlanScopeKey(campId);
   await setDoc(
     doc(db, ROOT, ROOT_DOC, "roomLayouts", documentId(scopeKey)),

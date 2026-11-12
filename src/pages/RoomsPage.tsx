@@ -1072,7 +1072,7 @@ function CampPlanImage({ campId, canEdit }: { campId: string; canEdit: boolean }
     setUploading(true);
     setError("");
     try {
-      await removeCampPlanImage(campId, layout?.planImagePath);
+      await removeCampPlanImage(campId);
       setZoomed(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "ลบรูปผังไม่สำเร็จ");
