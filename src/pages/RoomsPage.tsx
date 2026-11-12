@@ -20,7 +20,7 @@ import {
 import { useCamps } from "@/lib/db/useCamps";
 import { useCamp } from "@/context/CampContext";
 import { useWorkers, updateWorker, type Worker } from "@/lib/db/useWorkers";
-import { DEFAULT_ROOM_LAYOUT_SHAPE_COLOR, campPlanScopeKey, removeCampPlanImage, saveRoomLayout, uploadCampPlanImage, useRoomLayout, type RoomBlockLayout, type RoomLayoutBlock, type RoomLayoutPosition, type RoomLayoutShape } from "@/lib/db/useRoomLayouts";
+import { DEFAULT_ROOM_LAYOUT_SHAPE_COLOR, campPlanScopeKey, preparePlanImage, removeCampPlanImage, saveRoomLayout, uploadCampPlanImage, useRoomLayout, type RoomBlockLayout, type RoomLayoutBlock, type RoomLayoutPosition, type RoomLayoutShape } from "@/lib/db/useRoomLayouts";
 import { useAuth } from "@/context/AuthContext";
 import { USER_ROLES, type UserRole } from "@/types/auth";
 import {
@@ -1034,15 +1034,32 @@ function CampPlanImage({ campId, canEdit }: { campId: string; canEdit: boolean }
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [zoomed, setZoomed] = useState(false);
-  const imageUrl = layout?.planImageUrl || "";
+  const [previewUrl, setPreviewUrl] = useState("");
+  const imageUrl = layout?.planImageUrl || previewUrl;
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
     setUploading(true);
     setError("");
     try {
-      await uploadCampPlanImage(campId, file, layout?.planImagePath);
+      const prepared = await preparePlanImage(file);
+      const localUrl = URL.createObjectURL(prepared);
+      setPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return localUrl;
+      });
+      await uploadCampPlanImage(campId, prepared, layout?.planImagePath);
     } catch (e) {
+      setPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return "";
+      });
       setError(e instanceof Error ? e.message : "อัปโหลดรูปผังไม่สำเร็จ");
     } finally {
       setUploading(false);

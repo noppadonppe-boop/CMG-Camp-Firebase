@@ -146,24 +146,63 @@ export function campPlanScopeKey(campId: string) {
   return `plan:${campId}`;
 }
 
-export async function uploadCampPlanImage(campId: string, file: File, previousPath?: string) {
-  if (!file.type.startsWith("image/")) throw new Error("กรุณาเลือกไฟล์รูปภาพ");
-  if (file.size > PLAN_IMAGE_MAX_BYTES) throw new Error("รูปต้องมีขนาดไม่เกิน 10 MB");
-  const scopeKey = campPlanScopeKey(campId);
-  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-  const path = `room-plans/${documentId(scopeKey)}/${Date.now()}.${ext}`;
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file, { contentType: file.type || "image/jpeg" });
-  const url = await getDownloadURL(storageRef);
-  await setDoc(
-    doc(db, ROOT, ROOT_DOC, "roomLayouts", documentId(scopeKey)),
-    { scopeKey, planImageUrl: url, planImagePath: path, updatedAt: serverTimestamp() },
-    { merge: true },
-  );
-  if (previousPath && previousPath !== path) {
-    try { await deleteObject(ref(storage, previousPath)); } catch { /* ไฟล์เดิมอาจถูกลบไปแล้ว */ }
+function isImageFile(file: File) {
+  return file.type.startsWith("image/") || /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(file.name);
+}
+
+export async function preparePlanImage(file: File): Promise<Blob> {
+  if (!isImageFile(file)) throw new Error("กรุณาเลือกไฟล์รูปภาพ JPG หรือ PNG");
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxWidth = 2000;
+    const scale = Math.min(1, maxWidth / bitmap.width);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("แปลงรูปไม่สำเร็จ");
+    context.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+    if (!blob) throw new Error("แปลงรูปไม่สำเร็จ");
+    if (blob.size > PLAN_IMAGE_MAX_BYTES) throw new Error("รูปยังใหญ่เกิน 10 MB หลังลดขนาด ลองใช้รูปที่เล็กลง");
+    return blob;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("10 MB")) throw error;
+    throw new Error("เปิดไฟล์นี้ไม่ได้ ลองบันทึกเป็น JPG แล้วแนบใหม่");
   }
-  return { url, path };
+}
+
+function storageErrorMessage(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code: string }).code) : "";
+  const message = error instanceof Error ? error.message : "";
+  if (code.includes("unauthorized") || message.includes("unauthorized") || message.includes("permission")) {
+    return "อัปโหลดรูปไม่สำเร็จ เพราะที่เก็บไฟล์ยังไม่ให้สิทธิ์ ลองรีเฟรชหน้าแล้วแนบใหม่อีกครั้ง";
+  }
+  return message || "อัปโหลดรูปผังไม่สำเร็จ";
+}
+
+export async function uploadCampPlanImage(campId: string, file: Blob, previousPath?: string) {
+  const scopeKey = campPlanScopeKey(campId);
+  const path = `room-plans/${documentId(scopeKey)}/${Date.now()}.jpg`;
+  const storageRef = ref(storage, path);
+  try {
+    await uploadBytes(storageRef, file, { contentType: "image/jpeg" });
+    const url = await getDownloadURL(storageRef);
+    await setDoc(
+      doc(db, ROOT, ROOT_DOC, "roomLayouts", documentId(scopeKey)),
+      { scopeKey, planImageUrl: url, planImagePath: path, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+    if (previousPath && previousPath !== path) {
+      try { await deleteObject(ref(storage, previousPath)); } catch { /* ไฟล์เดิมอาจถูกลบไปแล้ว */ }
+    }
+    return { url, path };
+  } catch (error) {
+    throw new Error(storageErrorMessage(error));
+  }
 }
 
 export async function removeCampPlanImage(campId: string, path?: string) {
